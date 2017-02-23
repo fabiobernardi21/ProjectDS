@@ -13,6 +13,7 @@ import akka.actor.Cancellable;
 import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
+import java.lang.Boolean;
 
 
 public class NodeApp {
@@ -31,12 +32,12 @@ public class NodeApp {
     public static class Nodelist implements Serializable {
 		Map<Integer, ActorRef> nodes;
 		public Nodelist(Map<Integer, ActorRef> nodes) {
-			this.nodes = Collections.unmodifiableMap(new HashMap<Integer, ActorRef>(nodes)); 
+			this.nodes = Collections.unmodifiableMap(new HashMap<Integer, ActorRef>(nodes));
 		}
 	}
-	
+
     public static class Node extends UntypedActor {
-		
+
 		// The table of all nodes in the system id->ref
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
 
@@ -47,10 +48,7 @@ public class NodeApp {
 			nodes.put(myId, getSelf());
 		}
 
-        public void onReceive(Object message) {
-
-        	System.out.println("Node !!!!!!!!!! joined");
-
+    public void onReceive(Object message) {
 
 			if (message instanceof RequestNodelist) {
 				getSender().tell(new Nodelist(nodes), getSelf());
@@ -71,20 +69,28 @@ public class NodeApp {
 			}
 			else if (message instanceof MessageRequest) {
 				System.out.println("Messaggio ricevuto");
-				((MessageRequest)message).stamp();
+				if(((MessageRequest)message).isRead()){
+					System.out.println("Eseguo il read");
+				}
+				if(((MessageRequest)message).isLeave()){
+					System.out.println("Eseguo il leave");
+				}
+				if(((MessageRequest)message).isWrite()){
+					System.out.println("Eseguo il write");
+				}
 			}
 			else
-            	unhandled(message);		// this actor does not handle any incoming messages
+        	unhandled(message);		// this actor does not handle any incoming messages
         }
     }
-	
+
     public static void main(String[] args) {
-		
+
 		if (args.length != 0 && args.length !=2 ) {
 			System.out.println("Wrong number of arguments: [remote_ip remote_port]");
 			return;
 		}
-		
+
 		// Load the "application.conf"
 		Config config = ConfigFactory.load("application");
 		myId = config.getInt("nodeapp.id");
@@ -96,15 +102,15 @@ public class NodeApp {
 			remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 			System.out.println("Starting node " + myId + "; bootstrapping node: " + ip + ":"+ port);
 		}
-		else 
+		else
 			System.out.println("Starting disconnected node " + myId);
-		
+
 		// Create the actor system
 		final ActorSystem system = ActorSystem.create("mysystem", config);
 
 		// Create a single node actor
 		final ActorRef receiver = system.actorOf(
-				Props.create(Node.class),	// actor class 
+				Props.create(Node.class),	// actor class
 				"node"						// actor name
 				);
 

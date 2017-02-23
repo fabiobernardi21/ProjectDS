@@ -13,29 +13,47 @@ import akka.actor.Cancellable;
 import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
+import java.lang.Boolean;
 
-
-public class MessageRequest implements Serializable{
-
+public class MessageRequest implements Serializable {
+	private int key;
 	private String value;
 	private String request;
-	private int key;
-    
+
 	public void MessageRequest(){
 		request = "null";
 		value = "null";
 		key = 0;
 	}
 
-	public void fill(String value, String request, int key){
+	public void fill( String request, int key, String value){
 		this.value = value;
 		this.request = request;
 		this.key = key;
 	}
 
-	public void stamp(){
-		System.out.println("Message " +key+ " value " +value+ " request " +request);
+	public Boolean isRead(){
+		if(request.equals("write")){
+			return Boolean.TRUE;
+		}
+		else return Boolean.FALSE;
 	}
-	
-	
+
+	public Boolean isWrite(){
+		if(request.equals("read")){
+			return Boolean.TRUE;
+		}
+		else return Boolean.FALSE;
+	}
+
+	public Boolean isLeave(){
+		if(request.equals("leave")){
+			return Boolean.TRUE;
+		}
+		else return Boolean.FALSE;
+	}
+
+	public void stamp(){
+		System.out.println("request " +request+ " Message " +key+ " value " +value);
+	}
 }
