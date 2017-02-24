@@ -22,6 +22,26 @@ public class NodeApp {
 	static private String port = null; //port of the bootstramping node
 	static private ActorRef client; //reference of the client that send a request
 	static private int myId; // ID of the local node
+
+	public static class Data implements Serializable {
+		String value;
+		int version;
+		public Data(){
+			value = null;
+			version = 0;
+		}
+		public Data(String value, int version){
+			this.value = value;
+			this.version = version;
+		}
+		public String getValue(){
+			return value;
+		}
+		public int getVersion(){
+			return version;
+		}
+	}
+
 	//Join packet
   public static class Join implements Serializable {
 		int id;
@@ -31,12 +51,12 @@ public class NodeApp {
 	}
 	//DataResponseMessage -> the value answered by the server to the coordinator server
 	public static class DataResponseMessage implements Serializable{
-		String value;
-		public DataResponseMessage(String value){
-			this.value = value;
+		Data data;
+		public DataResponseMessage(Data data){
+			this.data = data;
 		}
-		public String getValue(){
-			return value;
+		public Data getData(){
+			return data;
 		}
 	}
 	//DataMessage -> read or write message sent by the coordinator to the server
@@ -45,7 +65,7 @@ public class NodeApp {
 		String value;
 		Boolean read;
 		Boolean write;
-		public DataMessage(int key, String value, Boolean read, Boolean write){
+		public DataMessage(int key, String value , Boolean read, Boolean write){
 			this.key = key;
 			this.value = value;
 			this.read = read;
@@ -63,11 +83,11 @@ public class NodeApp {
 			}
 			else return Boolean.FALSE;
 		}
-		public int getKey(){
-			return key;
-		}
 		public String getValue(){
 			return value;
+		}
+		public int getKey(){
+			return key;
 		}
 	}
 	//AckMessage -> ack sent by the servet to the coodinator when write is succesfully done
@@ -91,7 +111,7 @@ public class NodeApp {
 		// The table of id-actorref that contain all the nodes
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
 		//Table of key-value in the node
-		private Map<Integer, String> data = new HashMap<>();
+		private Map<Integer, Data> data = new HashMap<>();
 
 		//method called when a node is created
 		public void preStart() {
@@ -121,6 +141,17 @@ public class NodeApp {
 				}
 			}
 			return 1;
+		}
+		//method to find the right version of value
+		public int find_version(int key){
+			List<Integer> list = new ArrayList<Integer>(data.keySet());
+			for(int i = 0; i < list.size(); i++){
+				if(list.get(i) == key){
+					Data d = data.get(key);
+					return d.getVersion()+1;
+				}
+			}
+			return 0;
 		}
 		//method that send a DataMessage to a specific server to read a value connected to a key
 		public void read_value(int key){
@@ -170,26 +201,31 @@ public class NodeApp {
 				//if is a read send back a DataResponseMessage with the value
 				if (m.isRead()){
 					System.out.println("Eseguo il read");
-					String value = data.get(m.getKey());
-					getSender().tell(new DataResponseMessage(value),getSelf());
+					Data d = data.get(m.getKey());
+					getSender().tell(new DataResponseMessage(d),getSelf());
 				}
 				//if is a write make the write and send back an AckMessage
 				if(m.isWrite()){
 					System.out.println("Eseguo il write");
-					data.put(m.getKey(),m.getValue());
+					int version = find_version(m.getKey());
+					System.out.println("Version "+version);
+					Data d = new Data(m.getValue(),version);
+					data.put(m.getKey(),d);
 					getSender().tell(new AckMessage(Boolean.TRUE),getSelf());
 				}
 			}
 			//if is an AckMessage send to client a Response message with ack
 			else if(message instanceof AckMessage){
 				Response r = new Response();
-				r.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null);
+				r.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
 				client.tell(r,getSelf());
 			}
 			//if is a DataResponseMessage send to client the value
 			else if(message instanceof DataResponseMessage){
 				Response r = new Response();
-				r.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,((DataResponseMessage)message).getValue());
+				String value = ((DataResponseMessage)message).getData().getValue();
+				int version = ((DataResponseMessage)message).getData().getVersion();
+				r.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
 				client.tell(r,getSelf());
 			}
 			else
