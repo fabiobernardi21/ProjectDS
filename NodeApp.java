@@ -20,16 +20,31 @@ public class NodeApp {
 	static private String remotePath = null, ip = null, port = null; // Akka path of the bootstrapping peer
 	static private int myId; // ID of the local node
 
-    public static class Join implements Serializable {
+  public static class Join implements Serializable {
 		int id;
 		public Join(int id) {
 			this.id = id;
 		}
 	}
 
-	public static class ClientRequest implements Serializable {}
-    public static class RequestNodelist implements Serializable {}
-    public static class Nodelist implements Serializable {
+	public static class DataMessage implements Serializable {
+		String value;
+		Boolean read;
+		Boolean write;
+		public DataMessage(String value, Boolean read, Boolean write){
+			this.value = value;
+			this.read = read;
+			this.write = write;
+		}
+	}
+	public static class AckMessage implements Serializable{
+		Boolean ack;
+		public AckMessage(Boolean ack){
+			this.ack = ack;
+		}
+	}
+  public static class RequestNodelist implements Serializable {}
+  public static class Nodelist implements Serializable {
 		Map<Integer, ActorRef> nodes;
 		public Nodelist(Map<Integer, ActorRef> nodes) {
 			this.nodes = Collections.unmodifiableMap(new HashMap<Integer, ActorRef>(nodes));
@@ -40,12 +55,27 @@ public class NodeApp {
 
 		// The table of all nodes in the system id->ref
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
+		//Table of value in the node
+		private Map<Interger, String> data = new HashMap<>();
 
 		public void preStart() {
 			if (remotePath != null) {
     			getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 			}
 			nodes.put(myId, getSelf());
+		}
+
+		//metodo per salvare il valore sul server
+		public void save_value(MessageRequest m){}
+
+		//metodo per trovare il server giusto
+		public int find_server(int key){
+			return 1;
+		}
+
+		//metodo per ricavare valore dal server
+		public String return_value(int id){
+			return null;
 		}
 
     public void onReceive(Object message) {
@@ -77,6 +107,7 @@ public class NodeApp {
 				}
 				if(((MessageRequest)message).isWrite()){
 					System.out.println("Eseguo il write");
+					save_value(((MessageRequest)message));
 				}
 			}
 			else
