@@ -16,7 +16,8 @@ import com.typesafe.config.Config;
 import java.lang.Boolean;
 
 public class NodeApp {
-	static private String remotePath = null; // Akka path of the bootstrapping peer
+	static private Boolean recover = Boolean.FALSE, join = Boolean.FALSE;
+	static private String remotePath = null, ip = null, port = null; // Akka path of the bootstrapping peer
 	static private int myId; // ID of the local node
 
     public static class Join implements Serializable {
@@ -85,24 +86,40 @@ public class NodeApp {
 
     public static void main(String[] args) {
 
-		if (args.length != 0 && args.length !=2 ) {
-			System.out.println("Wrong number of arguments: [remote_ip remote_port]");
-			return;
-		}
-
 		// Load the "application.conf"
 		Config config = ConfigFactory.load("application");
 		myId = config.getInt("nodeapp.id");
-		if (args.length == 2) {
+		if (args.length == 0){
+			System.out.println("Starting disconnected node " + myId);
+		}
+		else if (args.length == 2) {
 			// Starting with a bootstrapping node
-			String ip = args[0];
-			String port = args[1];
+			ip = args[0];
+			port = args[1];
     		// The Akka path to the bootstrapping peer
 			remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 			System.out.println("Starting node " + myId + "; bootstrapping node: " + ip + ":"+ port);
 		}
-		else
-			System.out.println("Starting disconnected node " + myId);
+		else if (args.length == 3){
+			if(args[0].equals("join")){
+				join = Boolean.TRUE;
+				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
+			}
+			else if(args[0].equals("recover")){
+				recover = Boolean.TRUE;
+				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
+			}
+			else{
+			  System.out.println("argument error for node application");
+			}
+			ip = args[1];
+			port = args[2];
+		}
+
+		if (args.length != 0 && args.length != 2 && args.length != 3) {
+			System.out.println("Wrong number of arguments: [remote_ip remote_port]");
+			return;
+		}
 
 		// Create the actor system
 		final ActorSystem system = ActorSystem.create("mysystem", config);
@@ -112,7 +129,6 @@ public class NodeApp {
 				Props.create(Node.class),	// actor class
 				"node"						// actor name
 				);
-
 		return;
     }
 }
