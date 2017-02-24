@@ -43,7 +43,7 @@ public class NodeApp {
 
 		public void preStart() {
 			if (remotePath != null) {
-    			//getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
+    			getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 			}
 			nodes.put(myId, getSelf());
 		}
