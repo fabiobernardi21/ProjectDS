@@ -14,11 +14,7 @@ import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
 import java.lang.Boolean;
-<<<<<<< HEAD
-//io sono fabio
-=======
-//prova filippo
->>>>>>> origin/master
+//io in cima
 
 public class NodeApp {
 	static private String remotePath = null; // Akka path of the bootstrapping peer
