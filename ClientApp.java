@@ -21,13 +21,7 @@ public class ClientApp {
 		private static Boolean leave = Boolean.FALSE, read = Boolean.FALSE, write = Boolean.FALSE;
 		private static int key = 0;
 
-
-	  	public static class ClientRequest implements Serializable {}
-	  	public static class RequestNodelist implements Serializable {}
-	    public static class Nodelist implements Serializable {}
-
     public static class Client extends UntypedActor {
-
 
 		public void preStart() {
 			if(remotePath != null){
@@ -35,24 +29,28 @@ public class ClientApp {
 					MessageRequest m = new MessageRequest();
 					m.fill("leave",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
+					leave = Boolean.FALSE;
 				}
 				if(read){
 					MessageRequest m = new MessageRequest();
 					m.fill("read",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
+					read = Boolean.FALSE;
 				}
 				if(write){
 					MessageRequest m = new MessageRequest();
 					m.fill("write",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
+					write = Boolean.FALSE;
 				}
 			}
 		}
 
 		public void onReceive(Object message) {
-			unhandled(message);		// this actor does not handle any incoming messages
-        }
-
+			if (message instanceof Responce) {
+				((Responce)message).stamp_responce();
+			}
+			else unhandled(message);
     }
 
     public static void main(String[] args) {
@@ -79,7 +77,7 @@ public class ClientApp {
 			}
 			else System.out.println("argument error2");
 		}
-		else if (args.length == 5 ) { //read case
+		else if (args.length == 5 ) { //write case
 			ip = args[0];
 			port = args[1];
 			if(args[2].equals("write")){
@@ -92,7 +90,6 @@ public class ClientApp {
 		}
 		else System.out.println("argument error4");
 
-
 		// Create the actor system
 		final ActorSystem system = ActorSystem.create("mysystem", config);
 
@@ -102,4 +99,5 @@ public class ClientApp {
 				"client"						// actor name
 				);
     }
+	}
 }
