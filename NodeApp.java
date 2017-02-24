@@ -92,18 +92,13 @@ public class NodeApp {
 		if (args.length == 0){
 			System.out.println("Starting disconnected node " + myId);
 		}
-		else if (args.length == 2) {
-			// Starting with a bootstrapping node
-			ip = args[0];
-			port = args[1];
-    		// The Akka path to the bootstrapping peer
-			remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
-			System.out.println("Starting node " + myId + "; bootstrapping node: " + ip + ":"+ port);
-		}
 		else if (args.length == 3){
+			ip = args[1];
+			port = args[2];
 			if(args[0].equals("join")){
 				join = Boolean.TRUE;
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
+				System.out.println("Starting node " + myId + "; bootstrapping node: " + ip + ":"+ port);
 			}
 			else if(args[0].equals("recover")){
 				recover = Boolean.TRUE;
@@ -116,8 +111,8 @@ public class NodeApp {
 			port = args[2];
 		}
 
-		if (args.length != 0 && args.length != 2 && args.length != 3) {
-			System.out.println("Wrong number of arguments: [remote_ip remote_port]");
+		if (args.length != 0 && args.length != 3) {
+			System.out.println("Wrong number of arguments: [action, ip, port]");
 			return;
 		}
 
