@@ -21,7 +21,7 @@ public class ClientApp {
 		private static Boolean leave = Boolean.FALSE, read = Boolean.FALSE, write = Boolean.FALSE;
 		private static int key = 0;
 
-    public static class Client extends UntypedActor {
+  public static class Client extends UntypedActor {
 
 		public void preStart() {
 			if(remotePath != null){
@@ -52,8 +52,9 @@ public class ClientApp {
 			}
 			else unhandled(message);
     }
+	}
 
-    public static void main(String[] args) {
+  public static void main(String[] args) {
 		// Load the "application.conf"
 		Config config = ConfigFactory.load("application");
 
@@ -98,6 +99,5 @@ public class ClientApp {
 				Props.create(Client.class),	// actor class
 				"client"						// actor name
 				);
-    }
-	}
+   }
 }
