@@ -32,15 +32,23 @@ public class MessageRequest implements Serializable {
 		this.key = key;
 	}
 
+	public int getKey(){
+		return key;
+	}
+
+	public String getValue(){
+		return value;
+	}
+
 	public Boolean isRead(){
-		if(request.equals("write")){
+		if(request.equals("read")){
 			return Boolean.TRUE;
 		}
 		else return Boolean.FALSE;
 	}
 
 	public Boolean isWrite(){
-		if(request.equals("read")){
+		if(request.equals("write")){
 			return Boolean.TRUE;
 		}
 		else return Boolean.FALSE;

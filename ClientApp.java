@@ -47,8 +47,8 @@ public class ClientApp {
 		}
 
 		public void onReceive(Object message) {
-			if (message instanceof Responce) {
-				((Responce)message).stamp_responce();
+			if (message instanceof Response) {
+				((Response)message).stamp_responce();
 			}
 			else unhandled(message);
     }

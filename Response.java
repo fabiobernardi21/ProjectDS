@@ -15,7 +15,7 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
 import java.lang.Boolean;
 
-public class Responce implements Serializable {
+public class Response implements Serializable {
   private Boolean write;
   private Boolean leave;
   private Boolean read;
@@ -37,13 +37,13 @@ public class Responce implements Serializable {
 
   public void stamp_responce(){
     if (write) {
-      System.out.println("Write");
+      System.out.println("write eseguito");
     }
     if (read) {
-      System.out.println("Value = " + value);
+      System.out.println("Value letto = " + value);
     }
     if (leave) {
-      System.out.println("Leave");
+      System.out.println("Leave eseguito");
     }
   }
 }
