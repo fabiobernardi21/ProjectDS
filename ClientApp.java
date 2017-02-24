@@ -16,27 +16,30 @@ import com.typesafe.config.Config;
 import java.lang.Boolean;
 
 public class ClientApp {
-		static private String remotePath = null; // Akka path of the bootstrapping peer
+		static private String remotePath = null; //path of the server contacted
 		private static String ip = null, port = null,value = null;
 		private static Boolean leave = Boolean.FALSE, read = Boolean.FALSE, write = Boolean.FALSE;
 		private static int key = 0;
 
   public static class Client extends UntypedActor {
-
+		//function called after the node is created
 		public void preStart() {
 			if(remotePath != null){
+				//if we are in leave send a MessageRequest with leave
 				if(leave){
 					MessageRequest m = new MessageRequest();
 					m.fill("leave",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
 					leave = Boolean.FALSE;
 				}
+				//if we are in read send a MessageRequest with read key
 				if(read){
 					MessageRequest m = new MessageRequest();
 					m.fill("read",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
 					read = Boolean.FALSE;
 				}
+				//if we are in write send a MessageRequest with write key value
 				if(write){
 					MessageRequest m = new MessageRequest();
 					m.fill("write",key,value);
@@ -45,8 +48,9 @@ public class ClientApp {
 				}
 			}
 		}
-
+		//when the Client receive a message control the message type and operate
 		public void onReceive(Object message) {
+			//if is a Response it stamp the response received
 			if (message instanceof Response) {
 				((Response)message).stamp_responce();
 			}
@@ -57,7 +61,6 @@ public class ClientApp {
   public static void main(String[] args) {
 		// Load the "application.conf"
 		Config config = ConfigFactory.load("application");
-
 		if (args.length == 3 ) { //leave case
 			ip = args[0];
 			port = args[1];
@@ -66,7 +69,7 @@ public class ClientApp {
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 
 			}
-			else System.out.println("argument error1");
+			else System.out.println("argument error");
 		}
 		else if (args.length == 4 ) { //read case
 			ip = args[0];
@@ -76,7 +79,7 @@ public class ClientApp {
 				key = Integer.valueOf(args[3]);
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 			}
-			else System.out.println("argument error2");
+			else System.out.println("argument error");
 		}
 		else if (args.length == 5 ) { //write case
 			ip = args[0];
@@ -87,9 +90,9 @@ public class ClientApp {
 				value = args[4];
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 			}
-			else System.out.println("argument error3");
+			else System.out.println("argument error");
 		}
-		else System.out.println("argument error4");
+		else System.out.println("argument error");
 
 		// Create the actor system
 		final ActorSystem system = ActorSystem.create("mysystem", config);
@@ -97,7 +100,7 @@ public class ClientApp {
 		// Create a single node actor
 		final ActorRef receiver = system.actorOf(
 				Props.create(Client.class),	// actor class
-				"client"						// actor name
+				"client"										// actor name
 				);
    }
 }

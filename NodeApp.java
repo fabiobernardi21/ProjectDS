@@ -17,8 +17,10 @@ import java.lang.Boolean;
 
 public class NodeApp {
 	static private Boolean recover = Boolean.FALSE, join = Boolean.FALSE;
-	static private String remotePath = null, ip = null, port = null; // Akka path of the bootstrapping peer
-	static private ActorRef client;
+	static private String remotePath = null; //path of the bootstamping node
+	static private String ip = null; //ip of the bootstamping node
+	static private String port = null; //port of the bootstramping node
+	static private ActorRef client; //reference of the client that send a request
 	static private int myId; // ID of the local node
 	//Join packet
   public static class Join implements Serializable {
@@ -75,8 +77,9 @@ public class NodeApp {
 			this.ack = ack;
 		}
 	}
-
+	//RequestNodelist -> packet to request the nodelist to the bootstramping node
   public static class RequestNodelist implements Serializable {}
+	//Nodelist -> packet to sent the nodelist to the server joined
   public static class Nodelist implements Serializable {
 		Map<Integer, ActorRef> nodes;
 		public Nodelist(Map<Integer, ActorRef> nodes) {
@@ -85,27 +88,25 @@ public class NodeApp {
 	}
 
   public static class Node extends UntypedActor {
-
-		// The table of all nodes in the system id->ref
+		// The table of id-actorref that contain all the nodes
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
-		//Table of value in the node
+		//Table of key-value in the node
 		private Map<Integer, String> data = new HashMap<>();
 
+		//method called when a node is created
 		public void preStart() {
 			if (remotePath != null) {
     			getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 			}
 			nodes.put(myId, getSelf());
 		}
-
-		//metodo per salvare il valore sul server
+		//method used to make a write on a server in the system
 		public void save_value(MessageRequest m){
 			int serverid = find_server(m.getKey());
 			System.out.println("Server "+serverid);
 			nodes.get(serverid).tell(new DataMessage(m.getKey(),m.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
 		}
-
-		//metodo per trovare il server giusto
+		//method used to find the right server in the system
 		public int find_server(int key){
 			List<Integer> list = new ArrayList<Integer>(nodes.keySet());
 			Collections.sort(list);
@@ -126,54 +127,66 @@ public class NodeApp {
 			int serverid = find_server(key);
 			nodes.get(serverid).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
 		}
-
+		//when the server receive a message control the message type and operate
     public void onReceive(Object message) {
+			//if is a RequestNodelist the server send back the Nodelist
 			if (message instanceof RequestNodelist) {
 				getSender().tell(new Nodelist(nodes), getSelf());
 			}
+			//if is a Nodelist the server put the list of nodes in its local map and send a Join message
 			else if (message instanceof Nodelist) {
 				nodes.putAll(((Nodelist)message).nodes);
 				for (ActorRef n: nodes.values()) {
 					n.tell(new Join(myId), getSelf());
 				}
 			}
+			//if is a Join the server put sender on map because it is joined
 			else if (message instanceof Join) {
 				int id = ((Join)message).id;
 				System.out.println("Node " +id+ " joined");
 				nodes.put(id, getSender());
 			}
+			//if is a MessageRequest from client
 			else if (message instanceof MessageRequest) {
 				System.out.println("Messaggio client ricevuto");
 				client = getSender();
+				//if is a read call read_value function
 				if(((MessageRequest)message).isRead()){
 					read_value(((MessageRequest)message).getKey());
 				}
+				//if is leave call leave function
 				if(((MessageRequest)message).isLeave()){
 					System.out.println("Eseguo il leave");
 				}
+				//if is write call save_value function
 				if(((MessageRequest)message).isWrite()){
 					save_value(((MessageRequest)message));
 				}
 			}
+			//if is a DataMessage from server coordinator
 			else if (message instanceof DataMessage){
 				System.out.println("Messaggio dato ricevuto");
 				DataMessage m = ((DataMessage)message);
+				//if is a read send back a DataResponseMessage with the value
 				if (m.isRead()){
 					System.out.println("Eseguo il read");
 					String value = data.get(m.getKey());
 					getSender().tell(new DataResponseMessage(value),getSelf());
 				}
+				//if is a write make the write and send back an AckMessage
 				if(m.isWrite()){
 					System.out.println("Eseguo il write");
 					data.put(m.getKey(),m.getValue());
 					getSender().tell(new AckMessage(Boolean.TRUE),getSelf());
 				}
 			}
+			//if is an AckMessage send to client a Response message with ack
 			else if(message instanceof AckMessage){
 				Response r = new Response();
 				r.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null);
 				client.tell(r,getSelf());
 			}
+			//if is a DataResponseMessage send to client the value
 			else if(message instanceof DataResponseMessage){
 				Response r = new Response();
 				r.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,((DataResponseMessage)message).getValue());
@@ -189,6 +202,7 @@ public class NodeApp {
 		// Load the "application.conf"
 		Config config = ConfigFactory.load("application");
 		myId = config.getInt("nodeapp.id");
+
 		if (args.length == 0){
 			System.out.println("Starting disconnected node " + myId);
 		}
@@ -205,10 +219,8 @@ public class NodeApp {
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
 			}
 			else{
-			  System.out.println("argument error for node application");
+			  System.out.println("Argument error for node application");
 			}
-			ip = args[1];
-			port = args[2];
 		}
 
 		if (args.length != 0 && args.length != 3) {
@@ -222,7 +234,7 @@ public class NodeApp {
 		// Create a single node actor
 		final ActorRef receiver = system.actorOf(
 				Props.create(Node.class),	// actor class
-				"node"						// actor name
+				"node"					        	// actor name
 				);
 		return;
     }
