@@ -188,7 +188,9 @@ public class NodeApp {
 				//if is leave call leave function
 				if(((MessageRequest)message).isLeave()){
 					System.out.println("Eseguo il leave");
-					getContext().stop(getSelf());
+					//getContext().stop(getSelf());
+					//ActorSystem.stop(getSelf());
+					System.exit(0);
 				}
 				//if is write call save_value function
 				if(((MessageRequest)message).isWrite()){
