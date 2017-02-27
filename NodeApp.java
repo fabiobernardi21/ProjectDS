@@ -22,6 +22,7 @@ public class NodeApp {
 	static private String port = null; //port of the bootstramping node
 	static private ActorRef client; //reference of the client that send a request
 	static private int myId; // ID of the local node
+	static private int n = 1, w = 1, r = 1;
 
 	public static class Data implements Serializable {
 		String value;
@@ -112,6 +113,19 @@ public class NodeApp {
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
 		//Table of key-value in the node
 		private Map<Integer, Data> data = new HashMap<>();
+		//list of nodes that answer to read
+		private ArrayList<DataResponseMessage> read_answer = new ArrayList<>();
+		//list of nodes that answer to write
+		private ArrayList<AckMessage> write_answer = new ArrayList<>();
+
+		//method that return true if there are enough write answers
+		public Boolean enough_read(){
+			return read_answer.size() >= r;
+		}
+		//method that return true if there are enough write answers
+		public Boolean enough_write(){
+			return write_answer.size() >= w;
+		}
 
 		//method called when a node is created
 		public void preStart() {
@@ -122,25 +136,35 @@ public class NodeApp {
 		}
 		//method used to make a write on a server in the system
 		public void save_value(MessageRequest m){
-			int serverid = find_server(m.getKey());
+			ArrayList<Integer> serverid = find_server(m.getKey());
 			System.out.println("Server "+serverid);
-			nodes.get(serverid).tell(new DataMessage(m.getKey(),m.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+			for(int j = 0; j < serverid.size(); j++){
+				nodes.get(serverid.get(j)).tell(new DataMessage(m.getKey(),m.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+			}
 		}
 		//method used to find the right server in the system
-		public int find_server(int key){
+		public ArrayList<Integer> find_server(int key){
+			ArrayList<Integer> ids = new ArrayList<Integer>();
 			List<Integer> list = new ArrayList<Integer>(nodes.keySet());
+			int start = 0, q = 0;
 			Collections.sort(list);
 			if(list.get(list.size()-1) < key){
-				return list.get(0);
+				start = 0;
 			}
 			else {
-				for(int i = 0; i < list.size(); i++){
-					if(list.get(i) >= key){
-						return list.get(i);
+				for(int j = 0; j < list.size(); j++){
+					if(list.get(j) >= key){
+						start = j;
+						break;
 					}
 				}
 			}
-			return 1;
+			while(q <= n){
+				ids.add(list.get(start));
+				start=(start+1)%list.size();
+				q++;
+			}
+			return ids;
 		}
 		//method to find the right version of value
 		public int find_version(int key){
@@ -155,8 +179,10 @@ public class NodeApp {
 		}
 		//method that send a DataMessage to a specific server to read a value connected to a key
 		public void read_value(int key){
-			int serverid = find_server(key);
-			nodes.get(serverid).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
+		 	ArrayList<Integer> serverid = find_server(key);
+			for(int j = 0; j < serverid.size(); j++){
+				nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
+			}
 		}
 		//when the server receive a message control the message type and operate
     public void onReceive(Object message) {
@@ -217,19 +243,37 @@ public class NodeApp {
 					getSender().tell(new AckMessage(Boolean.TRUE),getSelf());
 				}
 			}
-			//if is an AckMessage send to client a Response message with ack
+			//if is an AckMessagen from server, send to client a Response message with ack
 			else if(message instanceof AckMessage){
-				Response r = new Response();
-				r.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
-				client.tell(r,getSelf());
+				write_answer.add(((AckMessage)message));
+				if (enough_write()) {
+					System.out.println("I have enough ack for write");
+					Response response = new Response();
+					response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
+					client.tell(response,getSelf());
+					write_answer.clear();
+				}
 			}
-			//if is a DataResponseMessage send to client the value
+			//if is a DataResponseMessage from server, send to client the value
 			else if(message instanceof DataResponseMessage){
-				Response r = new Response();
-				String value = ((DataResponseMessage)message).getData().getValue();
-				int version = ((DataResponseMessage)message).getData().getVersion();
-				r.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
-				client.tell(r,getSelf());
+				read_answer.add(((DataResponseMessage)message));
+				if (enough_read()) {
+					System.out.println("I have enough respose for read");
+					int max_version = 0;
+					int index = 0;
+					for (int i = 0; i < read_answer.size(); i++ ) {
+						if (max_version < read_answer.get(i).getData().getVersion()) {
+							max_version = read_answer.get(i).getData().getVersion();
+							index = i;
+						}
+					}
+					Response response = new Response();
+					String value = read_answer.get(index).getData().getValue();
+					int version = max_version;
+					response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
+					client.tell(response,getSelf());
+					read_answer.clear();
+				}
 			}
 			else
         	unhandled(message);		// this actor does not handle any incoming messages
