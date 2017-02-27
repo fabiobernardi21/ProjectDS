@@ -62,6 +62,6 @@ public class MessageRequest implements Serializable {
 	}
 
 	public void stamp(){
-		System.out.println("request " +request+ " Message " +key+ " value " +value);
+		System.out.println(request+ " message to " +key+ " with value " +value);
 	}
 }

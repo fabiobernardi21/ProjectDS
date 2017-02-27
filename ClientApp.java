@@ -27,6 +27,7 @@ public class ClientApp {
 			if(remotePath != null){
 				//if we are in leave send a MessageRequest with leave
 				if(leave){
+					System.out.println("Send a leave message to "+ip+" "+port);
 					MessageRequest m = new MessageRequest();
 					m.fill("leave",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
@@ -34,6 +35,7 @@ public class ClientApp {
 				}
 				//if we are in read send a MessageRequest with read key
 				if(read){
+					System.out.println("Send a read message ["+key+"] to "+ip+" "+port);
 					MessageRequest m = new MessageRequest();
 					m.fill("read",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
@@ -41,6 +43,7 @@ public class ClientApp {
 				}
 				//if we are in write send a MessageRequest with write key value
 				if(write){
+					System.out.println("Send a write message ["+key+" "+value+"] to "+ip+" "+port);
 					MessageRequest m = new MessageRequest();
 					m.fill("write",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());

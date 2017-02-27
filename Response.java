@@ -40,13 +40,13 @@ public class Response implements Serializable {
 
   public void stamp_responce(){
     if (write) {
-      System.out.println("Write eseguito");
+      System.out.println("Write done");
     }
     if (read) {
       System.out.println("Value = " +value+" Version = "+version);
     }
     if (leave) {
-      System.out.println("Leave eseguito");
+      System.out.println("Leave done");
     }
   }
 }
