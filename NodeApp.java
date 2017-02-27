@@ -24,6 +24,7 @@ public class NodeApp {
 	static private int myId; // ID of the local node
 	static private int n = 1, w = 1, r = 1;
 
+	//Data that contain value and version used by servers
 	public static class Data implements Serializable {
 		String value;
 		int version;
@@ -91,13 +92,10 @@ public class NodeApp {
 			return key;
 		}
 	}
-	//AckMessage -> ack sent by the servet to the coodinator when write is succesfully done
-	public static class AckMessage implements Serializable{
-		Boolean ack;
-		public AckMessage(Boolean ack){
-			this.ack = ack;
-		}
-	}
+	//Ack -> ack sent by the server to the coodinator when the server is ready for write
+	public static class Ack implements Serializable{}
+	//AckRequest -> ack sent by the coodrinator to n servers
+	public static class AckRequest implements Serializable{}
 	//RequestNodelist -> packet to request the nodelist to the bootstramping node
   public static class RequestNodelist implements Serializable {}
 	//Nodelist -> packet to sent the nodelist to the server joined
@@ -116,7 +114,12 @@ public class NodeApp {
 		//list of nodes that answer to read
 		private ArrayList<DataResponseMessage> read_answer = new ArrayList<>();
 		//list of nodes that answer to write
-		private ArrayList<AckMessage> write_answer = new ArrayList<>();
+		private ArrayList<Ack> write_answer = new ArrayList<>();
+		//write message sent by client and buffered on coordinator to wait ack from servers
+		private MessageRequest write_message = new MessageRequest();
+		//list of server ids where AckRequest is sent by coordinator
+		private ArrayList<Integer> serverid = new ArrayList<Integer>();
+
 
 		//method that return true if there are enough write answers
 		public Boolean enough_read(){
@@ -134,12 +137,13 @@ public class NodeApp {
 			}
 			nodes.put(myId, getSelf());
 		}
-		//method used to make a write on a server in the system
+		//method used to make a write on a server in the system sending an ackrequest packet
 		public void save_value(MessageRequest m){
-			ArrayList<Integer> serverid = find_server(m.getKey());
-			System.out.println("Server "+serverid);
+			write_message = m;
+			serverid = find_server(m.getKey());
+			System.out.println("Mando ack request");
 			for(int j = 0; j < serverid.size(); j++){
-				nodes.get(serverid.get(j)).tell(new DataMessage(m.getKey(),m.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+				nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
 			}
 		}
 		//method used to find the right server in the system
@@ -179,7 +183,7 @@ public class NodeApp {
 		}
 		//method that send a DataMessage to a specific server to read a value connected to a key
 		public void read_value(int key){
-		 	ArrayList<Integer> serverid = find_server(key);
+		 	serverid = find_server(key);
 			for(int j = 0; j < serverid.size(); j++){
 				nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
 			}
@@ -214,8 +218,6 @@ public class NodeApp {
 				//if is leave call leave function
 				if(((MessageRequest)message).isLeave()){
 					System.out.println("Eseguo il leave");
-					//getContext().stop(getSelf());
-					//ActorSystem.stop(getSelf());
 					System.exit(0);
 				}
 				//if is write call save_value function
@@ -233,28 +235,37 @@ public class NodeApp {
 					Data d = data.get(m.getKey());
 					getSender().tell(new DataResponseMessage(d),getSelf());
 				}
-				//if is a write make the write and send back an AckMessage
+				//if is a write make the write
 				if(m.isWrite()){
 					System.out.println("Eseguo il write");
 					int version = find_version(m.getKey());
 					System.out.println("Version "+version);
 					Data d = new Data(m.getValue(),version);
 					data.put(m.getKey(),d);
-					getSender().tell(new AckMessage(Boolean.TRUE),getSelf());
 				}
 			}
-			//if is an AckMessagen from server, send to client a Response message with ack
-			else if(message instanceof AckMessage){
-				write_answer.add(((AckMessage)message));
+			//if is a AckRequest sent by coordinator, send back an Ack
+			else if (message instanceof AckRequest){
+				System.out.println("Mando ack");
+				getSender().tell(new Ack(),getSelf());
+			}
+			//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
+			else if(message instanceof Ack){
+				System.out.println("Ricevo ack");
+				write_answer.add(((Ack)message));
 				if (enough_write()) {
-					System.out.println("I have enough ack for write");
+					System.out.println("Ho abbastanza ack per write");
+					for(int j = 0; j < serverid.size(); j++){
+						nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+					}
 					Response response = new Response();
 					response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
 					client.tell(response,getSelf());
 					write_answer.clear();
+					serverid.clear();
 				}
 			}
-			//if is a DataResponseMessage from server, send to client the value
+			//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
 			else if(message instanceof DataResponseMessage){
 				read_answer.add(((DataResponseMessage)message));
 				if (enough_read()) {
