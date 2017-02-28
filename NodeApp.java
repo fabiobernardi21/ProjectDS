@@ -125,7 +125,7 @@ public class NodeApp {
 		//list of server ids where AckRequest is sent by coordinator
 		private ArrayList<Integer> serverid = new ArrayList<Integer>();
 		//random variable to generate time delays
-		private Random rand;
+		private Random rand = new Random();
 
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
@@ -141,7 +141,10 @@ public class NodeApp {
 			serverid = find_server(m.getKey());
 			System.out.println("COORDINATOR:Send ACK requests to N nodes");
 			for(int j = 0; j < serverid.size(); j++){
-				nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
+				if(serverid.get(j) == myId){
+					nodes.get(serverid.get(j)).tell(new Ack(),getSelf());
+				}
+				else nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
 			}
 		}
 		//method used to find the right server in the system
@@ -186,7 +189,11 @@ public class NodeApp {
 		 	serverid = find_server(key);
 			System.out.println("COORDINATOR:Send a data read request to N nodes");
 			for(int j = 0; j < serverid.size(); j++){
-				nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
+				if(serverid.get(j) == myId){
+					Data d = data.get(key);
+					nodes.get(serverid.get(j)).tell(new DataResponseMessage(d),getSelf());
+				}
+				else nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
 			}
 		}
 		//method that write on the storage of the node
@@ -261,14 +268,13 @@ public class NodeApp {
 					System.out.println("NODE:Coordinator read request received");
 					Data d = data.get(m.getKey());
 					System.out.println("NODE:DataResponseMessage sent back to coordinator");
-					/*
 					try {
-						int randomNum = rand.nextInt((3500 - 2000) + 1) + 2000;
+						int randomNum = rand.nextInt((3500 - 2500) + 1) + 2000;
+						System.out.println("NODE:Delay "+randomNum+" ms");
 		  			TimeUnit.MILLISECONDS.sleep(randomNum);
 					} catch (InterruptedException ie) {
 						System.out.println("NODE:Timer error");
 					}
-					*/
 					getSender().tell(new DataResponseMessage(d),getSelf());
 				}
 				//if is a write make the write
@@ -286,15 +292,13 @@ public class NodeApp {
 			else if (message instanceof AckRequest){
 				System.out.println("NODE:Write AckRequest received from coordinator");
 				System.out.println("NODE:Ack sent back to coordinator");
-				/*
-				try{
-					int randomNum = rand.nextInt((3500 - 2000) + 1) + 2000;
-	  			TimeUnit.MILLISECONDS.sleep(randomNum);
+				try {
+					int randomNum = rand.nextInt((3500 - 2500) + 1) + 2000;
+					System.out.println("NODE:Delay "+randomNum+" ms");
+					TimeUnit.MILLISECONDS.sleep(randomNum);
+				} catch (InterruptedException ie) {
+					System.out.println("NODE:Timer error");
 				}
-				catch (InterruptedException ie){
-					System.out.println("NODE: Timer error");
-				}
-				*/
 				getSender().tell(new Ack(),getSelf());
 			}
 			//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
@@ -310,12 +314,12 @@ public class NodeApp {
 							for(int j = 0; j < serverid.size(); j++){
 								nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
 							}
+							serverid.clear();
 							System.out.println("COORDINATOR:Send back to client the response");
 							Response response = new Response();
 							response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
 							client.tell(response,getSelf());
 							write_answer.clear();
-							serverid.clear();
 						}
 					}
 				}, getContext().system().dispatcher());
