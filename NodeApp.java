@@ -17,6 +17,7 @@ import java.lang.Boolean;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 public class NodeApp {
 	static private Boolean recover = Boolean.FALSE, join = Boolean.FALSE;
@@ -188,7 +189,7 @@ public class NodeApp {
 		//method that write on the storage of the node
 		public void write_file(int n_node, int key, String value, int version){
 			try {
-				String path = ("/Users/FilippoStoffella/Desktop/ProjectDS/" + n_node + "/Storage.txt");
+				String path = ("./Storage.txt");
 				File file = new File(path);
 			  FileWriter fileWriter = new FileWriter(file);
 			  fileWriter.write("Key: " + key + "\n");
