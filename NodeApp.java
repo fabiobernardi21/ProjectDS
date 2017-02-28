@@ -14,6 +14,9 @@ import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
 import java.lang.Boolean;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 public class NodeApp {
 	static private Boolean recover = Boolean.FALSE, join = Boolean.FALSE;
@@ -119,7 +122,7 @@ public class NodeApp {
 		private MessageRequest write_message = new MessageRequest();
 		//list of server ids where AckRequest is sent by coordinator
 		private ArrayList<Integer> serverid = new ArrayList<Integer>();
-		
+
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
 			return read_answer.size() >= r;
@@ -182,6 +185,22 @@ public class NodeApp {
 				nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
 			}
 		}
+		//method that write on the storage of the node
+		public void write_file(int n_node, int key, String value, int version){
+			try {
+				String path = ("/Users/FilippoStoffella/Desktop/ProjectDS/" + n_node + "/Storage.txt");
+				File file = new File(path);
+			  FileWriter fileWriter = new FileWriter(file);
+			  fileWriter.write("Key: " + key + "\n");
+				fileWriter.write("Value: " + value + "\n");
+				fileWriter.write("Version: " + version + "\n");
+			  fileWriter.flush();
+			  fileWriter.close();
+			}catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		//method called when a node is created
 		public void preStart() {
 			if (remotePath != null) {
@@ -245,6 +264,8 @@ public class NodeApp {
 					System.out.println("NODE:Coordinator write request received");
 					int version = find_version(m.getKey());
 					Data d = new Data(m.getValue(),version);
+					int n_node=myId/10;
+          write_file(n_node,m.getKey(),m.getValue(),version);
 					System.out.println("NODE:Write done");
 					data.put(m.getKey(),d);
 				}
