@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.util.Random;
 
 public class NodeApp {
 	static private Boolean recover = Boolean.FALSE, join = Boolean.FALSE;
@@ -26,7 +27,7 @@ public class NodeApp {
 	static private String port = null; //port of the bootstramping node
 	static private ActorRef client; //reference of the client that send a request
 	static private int myId; // ID of the local node
-	static private int n = 0, w = 0, r = 0;
+	static private int n = 1, w = 1, r = 1;
 
 	//Data that contain value and version stored on the servers map with a key
 	public static class Data implements Serializable {
@@ -123,6 +124,8 @@ public class NodeApp {
 		private MessageRequest write_message = new MessageRequest();
 		//list of server ids where AckRequest is sent by coordinator
 		private ArrayList<Integer> serverid = new ArrayList<Integer>();
+		//random variable to generate time delays
+		private Random rand;
 
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
@@ -258,6 +261,14 @@ public class NodeApp {
 					System.out.println("NODE:Coordinator read request received");
 					Data d = data.get(m.getKey());
 					System.out.println("NODE:DataResponseMessage sent back to coordinator");
+					/*
+					try {
+						int randomNum = rand.nextInt((3500 - 2000) + 1) + 2000;
+		  			TimeUnit.MILLISECONDS.sleep(randomNum);
+					} catch (InterruptedException ie) {
+						System.out.println("NODE:Timer error");
+					}
+					*/
 					getSender().tell(new DataResponseMessage(d),getSelf());
 				}
 				//if is a write make the write
@@ -274,49 +285,68 @@ public class NodeApp {
 			//if is a AckRequest sent by coordinator, send back an Ack
 			else if (message instanceof AckRequest){
 				System.out.println("NODE:Write AckRequest received from coordinator");
-				System.out.println("NODE:Ack send back to coordinator");
+				System.out.println("NODE:Ack sent back to coordinator");
+				/*
+				try{
+					int randomNum = rand.nextInt((3500 - 2000) + 1) + 2000;
+	  			TimeUnit.MILLISECONDS.sleep(randomNum);
+				}
+				catch (InterruptedException ie){
+					System.out.println("NODE: Timer error");
+				}
+				*/
 				getSender().tell(new Ack(),getSelf());
 			}
 			//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
 			else if(message instanceof Ack){
 				System.out.println("COORDINATOR:Ack received from node");
 				write_answer.add(((Ack)message));
-				if (enough_write()) {
-					System.out.println("COORDINATOR:I have enough ack to write on N nodes");
-					System.out.println("COORDINATOR:Send to nodes a write DataMessage");
-					for(int j = 0; j < serverid.size(); j++){
-						nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+				getContext().system().scheduler().scheduleOnce(Duration.create(3000, TimeUnit.MILLISECONDS),
+  			new Runnable() {
+    			public void run() {
+						if (enough_write()) {
+							System.out.println("COORDINATOR:I have enough ack to write on N nodes");
+							System.out.println("COORDINATOR:Send to nodes a write DataMessage");
+							for(int j = 0; j < serverid.size(); j++){
+								nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+							}
+							System.out.println("COORDINATOR:Send back to client the response");
+							Response response = new Response();
+							response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
+							client.tell(response,getSelf());
+							write_answer.clear();
+							serverid.clear();
+						}
 					}
-					System.out.println("COORDINATOR:Send back to client the response");
-					Response response = new Response();
-					response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
-					client.tell(response,getSelf());
-					write_answer.clear();
-					serverid.clear();
-				}
+				}, getContext().system().dispatcher());
 			}
 			//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
 			else if(message instanceof DataResponseMessage){
 				read_answer.add(((DataResponseMessage)message));
-				if (enough_read()) {
-					System.out.println("COORDINATOR:I have enough respose to read on N nodes");
-					int max_version = 0;
-					int index = 0;
-					System.out.println("COORDINATOR:Choose the data with latest version");
-					for (int i = 0; i < read_answer.size(); i++ ) {
-						if (max_version < read_answer.get(i).getData().getVersion()) {
-							max_version = read_answer.get(i).getData().getVersion();
-							index = i;
+				getContext().system().scheduler().scheduleOnce(Duration.create(3000, TimeUnit.MILLISECONDS),
+  			new Runnable() {
+    			public void run() {
+						if (enough_read()) {
+							System.out.println("COORDINATOR:I have enough respose to read on N nodes");
+							int max_version = 0;
+							int index = 0;
+							System.out.println("COORDINATOR:Choose the data with latest version");
+							for (int i = 0; i < read_answer.size(); i++ ) {
+								if (max_version < read_answer.get(i).getData().getVersion()) {
+									max_version = read_answer.get(i).getData().getVersion();
+									index = i;
+								}
+							}
+							System.out.println("COORDINATOR:Send back to client the response");
+							Response response = new Response();
+							String value = read_answer.get(index).getData().getValue();
+							int version = max_version;
+							response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
+							client.tell(response,getSelf());
+							read_answer.clear();
 						}
-					}
-					System.out.println("COORDINATOR:Send back to client the response");
-					Response response = new Response();
-					String value = read_answer.get(index).getData().getValue();
-					int version = max_version;
-					response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
-					client.tell(response,getSelf());
-					read_answer.clear();
-				}
+    			}
+				}, getContext().system().dispatcher());
 			}
 			else
         	unhandled(message);		// this actor does not handle any incoming messages
