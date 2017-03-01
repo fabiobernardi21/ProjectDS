@@ -58,6 +58,20 @@ public class NodeApp {
 	}
 
 	//inserire nodedatabase che invia tutto il map data al nuovo server che fa join
+	public static class NodeData implements Serializable{
+		Data d;
+		int key;
+		public NodeData(Data d, int key){
+			this.d = d;
+			this.key = key;
+		}
+		int getKey(){
+			return key;
+		}
+		Data getData(){
+			return d;
+		}
+	}
 
 	//DataResponseMessage -> the value answered by the server after a read to the coordinator
 	public static class DataResponseMessage implements Serializable{
@@ -167,7 +181,7 @@ public class NodeApp {
 					}
 				}
 			}
-			while(q <= n){
+			while(q < n){
 				ids.add(list.get(start));
 				start=(start+1)%list.size();
 				q++;
@@ -205,17 +219,10 @@ public class NodeApp {
 				String path = ("./Storage.txt");
 				File file = new File(path);
 			  FileWriter fileWriter = new FileWriter(file);
-				List<Integer> list = new ArrayList<Integer>(nodes.keySet());
-				Integer k;
-				Data d = new Data();
-				String val;
-				int ver;
+				List<Integer> list = new ArrayList<Integer>(data.keySet());
+				fileWriter.write("");
         for (int i=0;i<list.size();i++){
-					k=list.get(i);
-				  d=data.get(k);
-					val=d.getValue();
-					ver=d.getVersion();
-					fileWriter.write("" + k + " " + val + " " + ver + "\n");
+					fileWriter.write(list.get(i) + " " + data.get(list.get(i)).getValue() + " " + data.get(list.get(i)).getVersion()+"\n");
 				}
 			  fileWriter.flush();
 			  fileWriter.close();
@@ -252,29 +259,45 @@ public class NodeApp {
 				int id = ((Join)message).id;
 				System.out.println("Node " +id+ " joined");
 				nodes.put(id, getSender());
-				List<Integer> list_nodes = new ArrayList<Integer>(nodes.keySet());
-				List<Integer> list_data = new ArrayList<Integer>(data.keySet());
-				Collections.sort(list_data)
-				Collections.sort(list_nodes);
-				int start = 0, q = 0;
-				if(list_nodes.get(list_nodes.size()-1) < id){
-					start = 0;
+				List<Integer> list_key_nodes = new ArrayList<Integer>(nodes.keySet());
+				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
+				Collections.sort(list_key_data);
+				Collections.sort(list_key_nodes);
+				int after = 0;
+				if(list_key_nodes.get(list_key_nodes.size()-1) < id){
+					after = 0;
 				}
 				else {
-					for(int j = 0; j < list_nodes.size(); j++){
-						if(list_nodes.get(j) > id){
-							start = j;
+					for(int j = 0; j < list_key_nodes.size(); j++){
+						if(list_key_nodes.get(j) > id){
+							after = j;
 							break;
 						}
 					}
 				}
 				//sono in possesso dell'id del server che dopo quello che ha fatto join
-				for(int j = 0; j < list_data.size(); j++){
-					if(list_data.get(j) <= id ){
-						//invia al server che ha fatto join tutto il database con packet di tipo nodedatabase
+				if (list_key_nodes.get(after) == myId) {
+					for(int j = 0; j < list_key_data.size(); j++){
+						if(list_key_data.get(j) <= id ){
+							Data d = data.get(list_key_data.get(j));
+							getSender().tell(new NodeData(d,list_key_data.get(j)),getSelf());
+						}
 					}
 				}
-
+				Boolean finded = Boolean.FALSE;
+				for(int j = 0; j<list_key_data.size(); j++){
+					serverid = find_server(list_key_data.get(j));
+					for (int i = 0;i < serverid.size();i++) {
+						finded = Boolean.FALSE;
+						if(myId == serverid.get(j)){
+							finded = Boolean.TRUE;
+							break;
+						}
+					}
+					if (finded == Boolean.FALSE) {
+						data.remove(list_key_data.get(j));
+					}
+				}
 			}
 			//if is a MessageRequest from client
 			else if (message instanceof MessageRequest) {
@@ -317,9 +340,9 @@ public class NodeApp {
 					System.out.println("NODE:Coordinator write request received");
 					int version = find_version(m.getKey());
 					Data d = new Data(m.getValue(),version);
-          write_file();
 					System.out.println("NODE:Write done");
 					data.put(m.getKey(),d);
+					write_file();
 				}
 			}
 			//if is a AckRequest sent by coordinator, send back an Ack
@@ -385,6 +408,11 @@ public class NodeApp {
 						}
     			}
 				}, getContext().system().dispatcher());
+			}
+			else if (message instanceof NodeData) {
+				NodeData nd = ((NodeData)message);
+				data.put(nd.getKey(),nd.getData());
+				write_file();
 			}
 			else
         	unhandled(message);		// this actor does not handle any incoming messages
