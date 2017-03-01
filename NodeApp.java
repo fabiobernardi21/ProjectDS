@@ -197,14 +197,23 @@ public class NodeApp {
 			}
 		}
 		//method that write on the storage of the node
-		public void write_file(int n_node, int key, String value, int version){
+		public void write_file(){
 			try {
 				String path = ("./Storage.txt");
 				File file = new File(path);
 			  FileWriter fileWriter = new FileWriter(file);
-			  fileWriter.write("Key: " + key + "\n");
-				fileWriter.write("Value: " + value + "\n");
-				fileWriter.write("Version: " + version + "\n");
+				List<Integer> list = new ArrayList<Integer>(nodes.keySet());
+				Integer k;
+				Data d = new Data();
+				String val;
+				int ver;
+        for (int i=0;i<list.size();i++){
+					k=list.get(i);
+				  d=data.get(k);
+					val=d.getValue();
+					ver=d.getVersion();
+					fileWriter.write("" + k + " " + val + " " + ver + "\n");
+				}
 			  fileWriter.flush();
 			  fileWriter.close();
 			}catch (IOException e) {
@@ -282,8 +291,7 @@ public class NodeApp {
 					System.out.println("NODE:Coordinator write request received");
 					int version = find_version(m.getKey());
 					Data d = new Data(m.getValue(),version);
-					int n_node=myId/10;
-          write_file(n_node,m.getKey(),m.getValue(),version);
+          write_file();
 					System.out.println("NODE:Write done");
 					data.put(m.getKey(),d);
 				}
