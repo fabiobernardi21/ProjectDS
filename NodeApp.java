@@ -56,6 +56,9 @@ public class NodeApp {
 			this.id = id;
 		}
 	}
+
+	//inserire nodedatabase che invia tutto il map data al nuovo server che fa join
+
 	//DataResponseMessage -> the value answered by the server after a read to the coordinator
 	public static class DataResponseMessage implements Serializable{
 		Data data;
@@ -249,6 +252,29 @@ public class NodeApp {
 				int id = ((Join)message).id;
 				System.out.println("Node " +id+ " joined");
 				nodes.put(id, getSender());
+				List<Integer> list_nodes = new ArrayList<Integer>(nodes.keySet());
+				List<Integer> list_data = new ArrayList<Integer>(data.keySet());
+				Collections.sort(list_data)
+				Collections.sort(list_nodes);
+				int start = 0, q = 0;
+				if(list_nodes.get(list_nodes.size()-1) < id){
+					start = 0;
+				}
+				else {
+					for(int j = 0; j < list_nodes.size(); j++){
+						if(list_nodes.get(j) > id){
+							start = j;
+							break;
+						}
+					}
+				}
+				//sono in possesso dell'id del server che dopo quello che ha fatto join
+				for(int j = 0; j < list_data.size(); j++){
+					if(list_data.get(j) <= id ){
+						//invia al server che ha fatto join tutto il database con packet di tipo nodedatabase
+					}
+				}
+
 			}
 			//if is a MessageRequest from client
 			else if (message instanceof MessageRequest) {
