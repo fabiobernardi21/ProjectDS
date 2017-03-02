@@ -14,9 +14,7 @@ import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.Config;
 import java.lang.Boolean;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.util.concurrent.TimeUnit;
 import java.util.Random;
 
@@ -48,7 +46,6 @@ public class NodeApp {
 			return version;
 		}
 	}
-
 	//Join packet
   public static class Join implements Serializable {
 		int id;
@@ -56,16 +53,28 @@ public class NodeApp {
 			this.id = id;
 		}
 	}
-
-	//inserire nodedatabase che invia tutto il map data al nuovo server che fa join
-	public static class NodeData implements Serializable{
+	public static class Leave implements Serializable {
+		int id;
+		public Leave(int id){
+			this.id = id;
+		}
+	}
+	//NodeDataBase -> packet that send all the database
+	public static class NodeDataBase implements Serializable{
 		Map<Integer, Data> database;
-
-		public NodeData(Map<Integer,Data> database){
+		public NodeDataBase(Map<Integer,Data> database){
 			this.database = database;
 		}
 	}
-
+	//NodeDataBase -> packet that send all the database
+	public static class NodeData implements Serializable{
+		Data d;
+		int key;
+		public NodeData(Data d, int key){
+			this.d = d;
+			this.key = key;
+		}
+	}
 	//DataResponseMessage -> the value answered by the server after a read to the coordinator
 	public static class DataResponseMessage implements Serializable{
 		Data data;
@@ -137,6 +146,8 @@ public class NodeApp {
 		//random variable to generate time delays
 		private Random rand = new Random();
 
+		private int timeout = 3000;
+
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
 			return read_answer.size() >= r;
@@ -156,6 +167,24 @@ public class NodeApp {
 				}
 				else nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
 			}
+			getContext().system().scheduler().scheduleOnce(Duration.create(timeout, TimeUnit.MILLISECONDS),
+			new Runnable() {
+				public void run() {
+					if (enough_write()) {
+						System.out.println("COORDINATOR:I have enough ack to write on N nodes");
+						System.out.println("COORDINATOR:Send to nodes a write DataMessage");
+						for(int j = 0; j < serverid.size(); j++){
+							nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+						}
+						serverid.clear();
+						System.out.println("COORDINATOR:Send back to client the response");
+						Response response = new Response();
+						response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
+						client.tell(response,getSelf());
+						write_answer.clear();
+					}
+				}
+			}, getContext().system().dispatcher());
 		}
 		//method used to find the right server in the system
 		public ArrayList<Integer> find_server(int key){
@@ -205,6 +234,30 @@ public class NodeApp {
 				}
 				else nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
 			}
+			getContext().system().scheduler().scheduleOnce(Duration.create(timeout, TimeUnit.MILLISECONDS),
+			new Runnable() {
+				public void run() {
+					if (enough_read()) {
+						System.out.println("COORDINATOR:I have enough respose to read on N nodes");
+						int max_version = 0;
+						int index = 0;
+						System.out.println("COORDINATOR:Choose the data with latest version");
+						for (int i = 0; i < read_answer.size(); i++ ) {
+							if (max_version < read_answer.get(i).getData().getVersion()) {
+								max_version = read_answer.get(i).getData().getVersion();
+								index = i;
+							}
+						}
+						System.out.println("COORDINATOR:Send back to client the response");
+						Response response = new Response();
+						String value = read_answer.get(index).getData().getValue();
+						int version = max_version;
+						response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
+						client.tell(response,getSelf());
+						read_answer.clear();
+					}
+				}
+			}, getContext().system().dispatcher());
 		}
 		//method that write on the storage of the node
 		public void write_file(){
@@ -224,198 +277,187 @@ public class NodeApp {
 			}
 		}
 
+		public void upload_file(){
+			try {
+			 FileReader f;
+			 f=new FileReader("Storage.txt");
+
+			 BufferedReader b;
+			 b=new BufferedReader(f);
+
+			 String s = null;
+
+			 while(true) {
+				 s=b.readLine();
+				 String[] parts = s.split(" ");
+				 Data d = new Data(parts[1],Integer.parseInt(parts[2]));
+				 data.put(Integer.parseInt(parts[0]),d);
+				 if(s==null)
+					 break;
+			 }
+		 }catch (IOException e) {
+			 System.out.println("Error file not found");
+		 }
+		}
+
 		//method called when a node is created
 		public void preStart() {
 			if (remotePath != null) {
-				System.out.println("Send a nodelist request to bootstramping node");
-				getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
+				if (join == Boolean.TRUE) {
+					System.out.println("Send a nodelist request to bootstramping node");
+					getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
+					join = Boolean.FALSE;
+				}
+				else if (recover == Boolean.TRUE){
+					upload_file();
+				}
 			}
 			nodes.put(myId, getSelf());
 		}
 		//when the server receive a message control the message type and operate
     public void onReceive(Object message) {
-			if (crash == Boolean.FALSE) {
-				//if is a RequestNodelist the server send back the Nodelist
-				if (message instanceof RequestNodelist) {
-					System.out.println("RequestNodelist packet rx -> send back Nodelist");
-					getSender().tell(new Nodelist(nodes), getSelf());
+			//if is a RequestNodelist the server send back the Nodelist
+			if (message instanceof RequestNodelist) {
+				System.out.println("RequestNodelist packet rx -> send back Nodelist");
+				getSender().tell(new Nodelist(nodes), getSelf());
+			}
+			//if is a Nodelist the server put the list of nodes in its local map and send a Join message
+			else if (message instanceof Nodelist) {
+				System.out.println("Nodelist packet rx -> send to all nodes a Join");
+				nodes.putAll(((Nodelist)message).nodes);
+				for (ActorRef n: nodes.values()) {
+					n.tell(new Join(myId), getSelf());
 				}
-				//if is a Nodelist the server put the list of nodes in its local map and send a Join message
-				else if (message instanceof Nodelist) {
-					System.out.println("Nodelist packet rx -> send to all nodes a Join");
-					nodes.putAll(((Nodelist)message).nodes);
-					for (ActorRef n: nodes.values()) {
-						n.tell(new Join(myId), getSelf());
-					}
+			}
+			//if is a Join the server put sender on map because it is joined
+			else if (message instanceof Join) {
+				int id = ((Join)message).id;
+				System.out.println("Node " +id+ " joined");
+				nodes.put(id, getSender());
+				List<Integer> list_key_nodes = new ArrayList<Integer>(nodes.keySet());
+				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
+				Collections.sort(list_key_data);
+				Collections.sort(list_key_nodes);
+				int after = 0;
+				if(list_key_nodes.get(list_key_nodes.size()-1) < id){
+					after = 0;
 				}
-				//if is a Join the server put sender on map because it is joined
-				else if (message instanceof Join) {
-					int id = ((Join)message).id;
-					System.out.println("Node " +id+ " joined");
-					nodes.put(id, getSender());
-					List<Integer> list_key_nodes = new ArrayList<Integer>(nodes.keySet());
-					List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
-					Collections.sort(list_key_data);
-					Collections.sort(list_key_nodes);
-					int after = 0;
-					if(list_key_nodes.get(list_key_nodes.size()-1) < id){
-						after = 0;
-					}
-					else {
-						for(int j = 0; j < list_key_nodes.size(); j++){
-							if(list_key_nodes.get(j) > id){
-								after = j;
-								break;
-							}
-						}
-					}
-					//sono in possesso dell'id del server che dopo quello che ha fatto join
-					if (list_key_nodes.get(after) == myId) {
-						Map <Integer,Data> database = new HashMap<>();
-						for(int j = 0; j < list_key_data.size(); j++){
-							Data d = data.get(list_key_data.get(j));
-							database.put(list_key_data.get(j),d);
-						}
-						getSender().tell(new NodeData(database),getSelf());
-					}
-					Boolean finded = Boolean.FALSE;
-					for(int j = 0; j<list_key_data.size(); j++){
-						serverid = find_server(list_key_data.get(j));
-						for (int i = 0;i<serverid.size();i++) {
-							if(serverid.get(i) == myId){
-								finded = Boolean.TRUE;
-								break;
-							}
-							finded = Boolean.FALSE;
-						}
-						if (finded == Boolean.FALSE) {
-							data.remove(list_key_data.get(j));
-							write_file();
+				else {
+					for(int j = 0; j < list_key_nodes.size(); j++){
+						if(list_key_nodes.get(j) > id){
+							after = j;
+							break;
 						}
 					}
 				}
-				//if is a MessageRequest from client
-				else if (message instanceof MessageRequest) {
-					client = getSender();
-					//if is a read call read_value function
-					if(((MessageRequest)message).isRead()){
-						System.out.println("COORDINATOR:Client read request received");
-						read_value(((MessageRequest)message).getKey());
+				//sono in possesso dell'id del server che dopo quello che ha fatto join
+				if (list_key_nodes.get(after) == myId) {
+					Map <Integer,Data> database = new HashMap<>();
+					for(int j = 0; j < list_key_data.size(); j++){
+						Data d = data.get(list_key_data.get(j));
+						database.put(list_key_data.get(j),d);
 					}
-					//if is leave call leave function
-					if(((MessageRequest)message).isLeave()){
-						System.out.println("COORDINATOR:Client leave request received");
-						System.exit(0);
-					}
-					//if is write call save_value function
-					if(((MessageRequest)message).isWrite()){
-						System.out.println("COORDINATOR:Client write request received");
-						save_value(((MessageRequest)message));
-					}
+					getSender().tell(new NodeDataBase(database),getSelf());
 				}
-				//if is a DataMessage from server coordinator
-				else if (message instanceof DataMessage){
-					DataMessage m = ((DataMessage)message);
-					//if is a read send back a DataResponseMessage with the value
-					if (m.isRead()){
-						System.out.println("NODE:Coordinator read request received");
-						Data d = data.get(m.getKey());
-						System.out.println("NODE:DataResponseMessage sent back to coordinator");
-						try {
-							int randomNum = rand.nextInt((3500 - 2500) + 1) + 2000;
-							System.out.println("NODE:Delay "+randomNum+" ms");
-			  			TimeUnit.MILLISECONDS.sleep(randomNum);
-						} catch (InterruptedException ie) {
-							System.out.println("NODE:Timer error");
+				Boolean finded = Boolean.FALSE;
+				for(int j = 0; j<list_key_data.size(); j++){
+					serverid = find_server(list_key_data.get(j));
+					for (int i = 0;i<serverid.size();i++) {
+						if(serverid.get(i) == myId){
+							finded = Boolean.TRUE;
+							break;
 						}
-						getSender().tell(new DataResponseMessage(d),getSelf());
+						finded = Boolean.FALSE;
 					}
-					//if is a write make the write
-					if(m.isWrite()){
-						System.out.println("NODE:Coordinator write request received");
-						int version = find_version(m.getKey());
-						Data d = new Data(m.getValue(),version);
-						System.out.println("NODE:Write done");
-						data.put(m.getKey(),d);
+					if (finded == Boolean.FALSE) {
+						data.remove(list_key_data.get(j));
 						write_file();
 					}
 				}
-				//if is a AckRequest sent by coordinator, send back an Ack
-				else if (message instanceof AckRequest){
-					System.out.println("NODE:Write AckRequest received from coordinator");
-					System.out.println("NODE:Ack sent back to coordinator");
-					try {
-						int randomNum = rand.nextInt((3500 - 2500) + 1) + 2000;
-						System.out.println("NODE:Delay "+randomNum+" ms");
-						TimeUnit.MILLISECONDS.sleep(randomNum);
-					} catch (InterruptedException ie) {
-						System.out.println("NODE:Timer error");
+			}
+			//if is a MessageRequest from client
+			else if (message instanceof MessageRequest) {
+				client = getSender();
+				//if is a read call read_value function
+				if(((MessageRequest)message).isRead()){
+					System.out.println("COORDINATOR:Client read request received");
+					read_value(((MessageRequest)message).getKey());
+				}
+				//if is leave call leave function
+				if(((MessageRequest)message).isLeave()){
+					System.out.println("COORDINATOR:Client leave request received");
+					nodes.remove(myId);
+					for (ActorRef n: nodes.values()) {
+						n.tell(new Leave(myId), getSelf());
 					}
-					getSender().tell(new Ack(),getSelf());
-				}
-				//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
-				else if(message instanceof Ack){
-					System.out.println("COORDINATOR:Ack received from node");
-					write_answer.add(((Ack)message));
-					getContext().system().scheduler().scheduleOnce(Duration.create(3000, TimeUnit.MILLISECONDS),
-	  			new Runnable() {
-	    			public void run() {
-							if (enough_write()) {
-								System.out.println("COORDINATOR:I have enough ack to write on N nodes");
-								System.out.println("COORDINATOR:Send to nodes a write DataMessage");
-								for(int j = 0; j < serverid.size(); j++){
-									nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
-								}
-								serverid.clear();
-								System.out.println("COORDINATOR:Send back to client the response");
-								Response response = new Response();
-								response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
-								client.tell(response,getSelf());
-								write_answer.clear();
-							}
+					List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
+					for(int j = 0; j<list_key_data.size(); j++){
+						serverid = find_server(list_key_data.get(j));
+						for (int i = 0;i<serverid.size();i++) {
+							nodes.get(serverid.get(i)).tell(new NodeData(data.get(list_key_data.get(i)),list_key_data.get(i)),getSelf());
 						}
-					}, getContext().system().dispatcher());
+					}
+					data.clear();
+					nodes.clear();
+					System.exit(0);
 				}
-				//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
-				else if(message instanceof DataResponseMessage){
-					read_answer.add(((DataResponseMessage)message));
-					getContext().system().scheduler().scheduleOnce(Duration.create(3000, TimeUnit.MILLISECONDS),
-	  			new Runnable() {
-	    			public void run() {
-							if (enough_read()) {
-								System.out.println("COORDINATOR:I have enough respose to read on N nodes");
-								int max_version = 0;
-								int index = 0;
-								System.out.println("COORDINATOR:Choose the data with latest version");
-								for (int i = 0; i < read_answer.size(); i++ ) {
-									if (max_version < read_answer.get(i).getData().getVersion()) {
-										max_version = read_answer.get(i).getData().getVersion();
-										index = i;
-									}
-								}
-								System.out.println("COORDINATOR:Send back to client the response");
-								Response response = new Response();
-								String value = read_answer.get(index).getData().getValue();
-								int version = max_version;
-								response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
-								client.tell(response,getSelf());
-								read_answer.clear();
-							}
-	    			}
-					}, getContext().system().dispatcher());
+				//if is write call save_value function
+				if(((MessageRequest)message).isWrite()){
+					System.out.println("COORDINATOR:Client write request received");
+					save_value(((MessageRequest)message));
 				}
-				else if (message instanceof NodeData) {
-					NodeData nd = ((NodeData)message);
-					data.putAll(nd.database);
+			}
+			//if is a DataMessage from server coordinator
+			else if (message instanceof DataMessage){
+				DataMessage m = ((DataMessage)message);
+				//if is a read send back a DataResponseMessage with the value
+				if (m.isRead()){
+					System.out.println("NODE:Coordinator read request received");
+					Data d = data.get(m.getKey());
+					System.out.println("NODE:DataResponseMessage sent back to coordinator");
+					getSender().tell(new DataResponseMessage(d),getSelf());
+				}
+				//if is a write make the write
+				if(m.isWrite()){
+					System.out.println("NODE:Coordinator write request received");
+					int version = find_version(m.getKey());
+					Data d = new Data(m.getValue(),version);
+					System.out.println("NODE:Write done");
+					data.put(m.getKey(),d);
 					write_file();
 				}
-				else
-	        	unhandled(message);		// this actor does not handle any incoming messages
-	      }
-			} else {
-				//aspetta e fai recovery;
 			}
+			//if is a AckRequest sent by coordinator, send back an Ack
+			else if (message instanceof AckRequest){
+				System.out.println("NODE:Write AckRequest received from coordinator");
+				System.out.println("NODE:Ack sent back to coordinator");
+				getSender().tell(new Ack(),getSelf());
+			}
+			//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
+			else if(message instanceof Ack){
+				System.out.println("COORDINATOR:Ack received from node");
+				write_answer.add(((Ack)message));
+			}
+			//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
+			else if(message instanceof DataResponseMessage){
+				read_answer.add(((DataResponseMessage)message));
+			}
+			else if (message instanceof NodeDataBase) {
+				NodeDataBase nd = ((NodeDataBase)message);
+				data.putAll(nd.database);
+				write_file();
+			}
+			else if (message instanceof NodeData) {
+				if (data.containsKey(((NodeData)message).key) == Boolean.FALSE){
+					data.put(((NodeData)message).key,((NodeData)message).d);
+				}
+			}
+			else if (message instanceof Leave){
+				nodes.remove(((Leave)message).id);
+			}
+			else unhandled(message);		// this actor does not handle any incoming messages
     }
+  }
 
   public static void main(String[] args) {
 
