@@ -27,6 +27,15 @@ public class NodeApp {
 	static private int myId; // ID of the local node
 	static private int n = 2, w = 2, r = 2;
 
+	public static class RequestDataRecovery implements Serializable{}
+	public static class DataRecovery implements Serializable{
+		Data d;
+		int key;
+		public DataRecovery(Data d, int key){
+			this.d = d;
+			this.key = key;
+		}
+	}
 	//Data that contain value and version stored on the servers map with a key
 	public static class Data implements Serializable {
 		String value;
@@ -129,7 +138,13 @@ public class NodeApp {
 			this.nodes = Collections.unmodifiableMap(new HashMap<Integer, ActorRef>(nodes));
 		}
 	}
-
+	public static class RequestNodelistRecovery implements Serializable{}
+	public static class NodelistRecovery implements Serializable{
+		Map<Integer, ActorRef> nodes;
+		public NodelistRecovery(Map<Integer, ActorRef> nodes) {
+			this.nodes = Collections.unmodifiableMap(new HashMap<Integer, ActorRef>(nodes));
+		}
+	}
   public static class Node extends UntypedActor {
 		//Table of id-actorref that contain all the nodes
 		private Map<Integer, ActorRef> nodes = new HashMap<>();
@@ -310,21 +325,25 @@ public class NodeApp {
 			 System.out.println("Error file not found");
 		 }
 		}
-
 		//method called when a node is created
 		public void preStart() {
 			if (remotePath != null) {
 				if (join == Boolean.TRUE) {
 					delete_file();
+					write_file();
 					System.out.println("Send a nodelist request to bootstramping node");
 					getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 					join = Boolean.FALSE;
 				}
 				else if (recover == Boolean.TRUE){
 					upload_file();
+					getContext().actorSelection(remotePath).tell(new RequestNodelistRecovery(), getSelf());
 				}
 			}
-			else delete_file();
+			else {
+				delete_file();
+				write_file();
+			}
 			nodes.put(myId, getSelf());
 		}
 		//when the server receive a message control the message type and operate
@@ -400,13 +419,9 @@ public class NodeApp {
 				if(((MessageRequest)message).isLeave()){
 					System.out.println("NODE:Client leave request received");
 					nodes.remove(myId);
-					/*
-					try{
-						TimeUnit.MILLISECONDS.sleep(2000);
-					} catch (InterruptedException ie) {
-						System.out.println("NODE:Timer error");
+					for (ActorRef n: nodes.values()) {
+						n.tell(new Leave(myId), getSelf());
 					}
-					*/
 					List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 					for(int j = 0; j<list_key_data.size(); j++){
 						serverid = find_server(list_key_data.get(j));
@@ -414,13 +429,15 @@ public class NodeApp {
 							nodes.get(serverid.get(i)).tell(new NodeData(data.get(list_key_data.get(j)),list_key_data.get(j)),getSelf());
 						}
 					}
-					for (ActorRef n: nodes.values()) {
-						n.tell(new Leave(myId), getSelf());
-					}
 					System.out.println("NODE:data sent to other nodes for right replication");
 					data.clear();
 					nodes.clear();
 					delete_file();
+					try{
+						TimeUnit.MILLISECONDS.sleep(2000);
+					} catch (InterruptedException ie) {
+						System.out.println("NODE:Timer error");
+					}
 					System.exit(0);
 				}
 				//if is write call save_value function
@@ -470,15 +487,62 @@ public class NodeApp {
 				write_file();
 			}
 			else if (message instanceof NodeData) {
-				System.out.println("NODE: \n \n \n \n \n NodeData ricevuto");
+				System.out.println("NODE:NodeData ricevuto");
 				if (data.containsKey(((NodeData)message).key) == Boolean.FALSE){
-					System.out.println("notte");
 					data.put(((NodeData)message).key,((NodeData)message).d);
 					write_file();
 				}
 			}
 			else if (message instanceof Leave){
 				nodes.remove(((Leave)message).id);
+			}
+			else if (message instanceof DataRecovery){
+				DataRecovery dr = ((DataRecovery)message);
+				if (data.containsKey(dr.key) == Boolean.FALSE){
+					data.put(dr.key,dr.d);
+					write_file();
+				}
+				else{
+					if(dr.d.getVersion() > data.get(dr.key).getVersion()){
+						data.put(dr.key,dr.d);
+						write_file();
+					}
+				}
+			}
+			else if (message instanceof RequestNodelistRecovery){
+				getSender().tell(new NodelistRecovery(nodes),getSelf());
+			}
+			else if (message instanceof NodelistRecovery){
+				nodes.putAll(((NodelistRecovery)message).nodes);
+				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
+				Boolean finded = Boolean.FALSE;
+				for(int j = 0; j<list_key_data.size(); j++){
+					serverid = find_server(list_key_data.get(j));
+					for (int i = 0;i<serverid.size();i++) {
+						if(serverid.get(i) == myId){
+							finded = Boolean.TRUE;
+							break;
+						}
+						finded = Boolean.FALSE;
+					}
+					if (finded == Boolean.FALSE) {
+						data.remove(list_key_data.get(j));
+						write_file();
+					}
+				}
+				int previus = id_node_list.indexOf(myId)-1;
+				int next = id_node_list.indexOf(myId)+1;
+			}
+			else if (message instanceof RequestDataRecovery){
+				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
+				for(int j = 0; j<list_key_data.size(); j++){
+					serverid = find_server(list_key_data.get(j));
+					for (int i = 0;i<serverid.size();i++) {
+						if (nodes.get(serverid.get(i)).equals(getSender())){}
+							nodes.get(serverid.get(i)).tell(new DataRecovery(data.get(list_key_data.get(j)),list_key_data.get(j)),getSelf());
+							break;
+					}
+				}
 			}
 			else unhandled(message);		// this actor does not handle any incoming messages
     }
