@@ -276,7 +276,18 @@ public class NodeApp {
 				e.printStackTrace();
 			}
 		}
-
+		public void delete_file(){
+			try{
+	      File file = new File("Storage.txt");
+	      if(file.delete()){
+					System.out.println(file.getName() + " is deleted!");
+	      }else{
+					System.out.println("Delete operation is failed.");
+	      }
+			}catch(Exception e){
+				e.printStackTrace();
+			}
+		}
 		public void upload_file(){
 			try {
 			 FileReader f;
@@ -304,6 +315,7 @@ public class NodeApp {
 		public void preStart() {
 			if (remotePath != null) {
 				if (join == Boolean.TRUE) {
+					delete_file();
 					System.out.println("Send a nodelist request to bootstramping node");
 					getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 					join = Boolean.FALSE;
@@ -312,6 +324,7 @@ public class NodeApp {
 					upload_file();
 				}
 			}
+			else delete_file();
 			nodes.put(myId, getSelf());
 		}
 		//when the server receive a message control the message type and operate
@@ -385,20 +398,29 @@ public class NodeApp {
 				}
 				//if is leave call leave function
 				if(((MessageRequest)message).isLeave()){
-					System.out.println("COORDINATOR:Client leave request received");
+					System.out.println("NODE:Client leave request received");
 					nodes.remove(myId);
-					for (ActorRef n: nodes.values()) {
-						n.tell(new Leave(myId), getSelf());
+					/*
+					try{
+						TimeUnit.MILLISECONDS.sleep(2000);
+					} catch (InterruptedException ie) {
+						System.out.println("NODE:Timer error");
 					}
+					*/
 					List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 					for(int j = 0; j<list_key_data.size(); j++){
 						serverid = find_server(list_key_data.get(j));
 						for (int i = 0;i<serverid.size();i++) {
-							nodes.get(serverid.get(i)).tell(new NodeData(data.get(list_key_data.get(i)),list_key_data.get(i)),getSelf());
+							nodes.get(serverid.get(i)).tell(new NodeData(data.get(list_key_data.get(j)),list_key_data.get(j)),getSelf());
 						}
 					}
+					for (ActorRef n: nodes.values()) {
+						n.tell(new Leave(myId), getSelf());
+					}
+					System.out.println("NODE:data sent to other nodes for right replication");
 					data.clear();
 					nodes.clear();
+					delete_file();
 					System.exit(0);
 				}
 				//if is write call save_value function
@@ -448,8 +470,11 @@ public class NodeApp {
 				write_file();
 			}
 			else if (message instanceof NodeData) {
+				System.out.println("NODE: \n \n \n \n \n NodeData ricevuto");
 				if (data.containsKey(((NodeData)message).key) == Boolean.FALSE){
+					System.out.println("notte");
 					data.put(((NodeData)message).key,((NodeData)message).d);
+					write_file();
 				}
 			}
 			else if (message instanceof Leave){
