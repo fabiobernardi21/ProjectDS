@@ -516,6 +516,7 @@ public class NodeApp {
 				nodes.putAll(((NodelistRecovery)message).nodes);
 				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
 				Boolean finded = Boolean.FALSE;
+				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 				for(int j = 0; j<list_key_data.size(); j++){
 					serverid = find_server(list_key_data.get(j));
 					for (int i = 0;i<serverid.size();i++) {
@@ -532,6 +533,9 @@ public class NodeApp {
 				}
 				int previus = id_node_list.indexOf(myId)-1;
 				int next = id_node_list.indexOf(myId)+1;
+
+				//bisogna lanciare RequestDataRecovery
+				
 			}
 			else if (message instanceof RequestDataRecovery){
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
