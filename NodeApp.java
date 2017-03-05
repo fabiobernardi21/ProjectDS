@@ -29,19 +29,34 @@ public class NodeApp {
 	static private int myId; // ID of the local node
 	static private int n = 3, w = 2, r = 2;
 
-	public static class RequestDataRecovery implements Serializable{}
+	public static class RequestDataRecovery implements Serializable{
+		private int senderid;
+		public RequestDataRecovery(int senderid){
+			this.senderid = senderid;
+		}
+		public int getSenderid(){
+			return senderid;
+		}
+
+	}
 	public static class DataRecovery implements Serializable{
-		Data d;
-		int key;
+		private Data d;
+		private int key;
 		public DataRecovery(Data d, int key){
 			this.d = d;
 			this.key = key;
 		}
+		public Data getData(){
+			return d;
+		}
+		public int getKey(){
+			return key;
+		}
 	}
 	//Data that contain value and version stored on the servers map with a key
 	public static class Data implements Serializable {
-		String value;
-		int version;
+		private String value;
+		private int version;
 		public Data(){
 			value = null;
 			version = 0;
@@ -59,15 +74,22 @@ public class NodeApp {
 	}
 	//Join packet
   public static class Join implements Serializable {
-		int id;
+		private int id;
 		public Join(int id) {
 			this.id = id;
 		}
+		public int getId(){
+			return id;
+		}
 	}
+	//Leave packet
 	public static class Leave implements Serializable {
-		int id;
+		private int id;
 		public Leave(int id){
 			this.id = id;
+		}
+		public int getId(){
+			return id;
 		}
 	}
 	//NodeDataBase -> packet that send all the database
@@ -79,16 +101,22 @@ public class NodeApp {
 	}
 	//NodeDataBase -> packet that send all the database
 	public static class NodeData implements Serializable{
-		Data d;
-		int key;
+		private Data d;
+		private int key;
 		public NodeData(Data d, int key){
 			this.d = d;
 			this.key = key;
 		}
+		public Data getData(){
+			return d;
+		}
+		public int getKey(){
+			return key;
+		}
 	}
 	//DataResponseMessage -> the value answered by the server after a read to the coordinator
 	public static class DataResponseMessage implements Serializable{
-		Data data;
+		private Data data;
 		public DataResponseMessage(Data data){
 			this.data = data;
 		}
@@ -98,10 +126,10 @@ public class NodeApp {
 	}
 	//DataMessage -> read or write message sent by the coordinator to the server
 	public static class DataMessage implements Serializable {
-		int key;
-		String value;
-		Boolean read;
-		Boolean write;
+		private int key;
+		private String value;
+		private Boolean read;
+		private Boolean write;
 		public DataMessage(int key, String value , Boolean read, Boolean write){
 			this.key = key;
 			this.value = value;
@@ -297,7 +325,6 @@ public class NodeApp {
 			try{
 	      File file = new File("Storage.txt");
 	      if(file.delete()){
-					System.out.println(file.getName() + " is deleted!");
 	      }else{
 					System.out.println("Delete operation is failed.");
 	      }
@@ -341,11 +368,13 @@ public class NodeApp {
 					join = Boolean.FALSE;
 				}
 				else if (recover == Boolean.TRUE){
-					nodes.clear();
-					data.clear();
-					upload_file();
-					getContext().actorSelection(remotePath).tell(new RequestNodelistRecovery(), getSelf());
-					recover = Boolean.FALSE;
+					if(!nodes.isEmpty()){
+						nodes.clear();
+						data.clear();
+						upload_file();
+						getContext().actorSelection(remotePath).tell(new RequestNodelistRecovery(), getSelf());
+						recover = Boolean.FALSE;
+					}
 				}
 			}
 			else {
@@ -373,7 +402,7 @@ public class NodeApp {
 			}
 			//if is a Join the server put sender on map because it is joined
 			else if (message instanceof Join) {
-				int id = ((Join)message).id;
+				int id = ((Join)message).getId();
 				System.out.println("Node " +id+ " joined");
 				nodes.put(id, getSender());
 				List<Integer> list_key_nodes = new ArrayList<Integer>(nodes.keySet());
@@ -498,13 +527,13 @@ public class NodeApp {
 			}
 			else if (message instanceof NodeData) {
 				System.out.println("NODE:NodeData ricevuto");
-				if (data.containsKey(((NodeData)message).key) == Boolean.FALSE){
-					data.put(((NodeData)message).key,((NodeData)message).d);
+				if (data.containsKey(((NodeData)message).getKey()) == Boolean.FALSE){
+					data.put(((NodeData)message).getKey(),((NodeData)message).getData());
 					write_file();
 				}
 			}
 			else if (message instanceof Leave){
-				nodes.remove(((Leave)message).id);
+				nodes.remove(((Leave)message).getId());
 			}
 			else if (message instanceof RequestNodelistRecovery){
 				getSender().tell(new NodelistRecovery(nodes),getSelf());
@@ -534,42 +563,32 @@ public class NodeApp {
 				int previous = id_node_list.indexOf(myId)-1;
 				int next = id_node_list.indexOf(myId)+1;
 				//send a RequestDataRecovery to next and prevoius
-				nodes.get(id_node_list.get(next)).tell(new RequestDataRecovery(),getSelf());
-				try{
-					TimeUnit.MILLISECONDS.sleep(4000);
-				} catch (InterruptedException ie) {
-					System.out.println("NODE:Timer error");
-				}
-				//System.out.println("Send to next RequestDataRecovery");
-				nodes.get(id_node_list.get(previous)).tell(new RequestDataRecovery(),getSelf());
+				nodes.get(id_node_list.get(next)).tell(new RequestDataRecovery(myId),getSelf());
+				nodes.get(id_node_list.get(previous)).tell(new RequestDataRecovery(myId),getSelf());
 			}
 			else if (message instanceof RequestDataRecovery){
+				RequestDataRecovery rdr = ((RequestDataRecovery)message);
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
 				for(int j = 0; j<list_key_data.size(); j++){
 					serverid = find_server(list_key_data.get(j));
 					for (int i = 0;i<serverid.size();i++) {
-						if (nodes.get(serverid.get(i)).compareTo(getSender()) == 1){
-							System.out.println("Send to next RequestDataRecovery");
+						if (serverid.get(i) == rdr.getSenderid()){
+							System.out.println("Send back the data");
 							getSender().tell(new DataRecovery(data.get(list_key_data.get(j)),list_key_data.get(j)),getSelf());
-							try{
-								TimeUnit.MILLISECONDS.sleep(4000);
-							} catch (InterruptedException ie) {
-								System.out.println("NODE:Timer error");
-							}
 						}
 					}
 				}
 			}
 			else if (message instanceof DataRecovery){
 				DataRecovery dr = ((DataRecovery)message);
-				if (data.containsKey(dr.key) == false){
-					data.put(dr.key,dr.d);
+				if (data.containsKey(dr.getKey()) == false){
+					data.put(dr.getKey(),dr.getData());
 					write_file();
 				}
 				else{
-					if(dr.d.getVersion() > data.get(dr.key).getVersion()){
-						data.put(dr.key,dr.d);
+					if(dr.getData().getVersion() > data.get(dr.getKey()).getVersion()){
+						data.put(dr.getKey(),dr.getData());
 						write_file();
 					}
 				}
