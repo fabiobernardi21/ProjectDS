@@ -31,7 +31,6 @@ public class ClientApp {
 					MessageRequest m = new MessageRequest();
 					m.fill("leave",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
-					leave = Boolean.FALSE;
 				}
 				//if we are in read send a MessageRequest with read key
 				if(read){
@@ -39,7 +38,6 @@ public class ClientApp {
 					MessageRequest m = new MessageRequest();
 					m.fill("read",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
-					read = Boolean.FALSE;
 				}
 				//if we are in write send a MessageRequest with write key value
 				if(write){
@@ -47,15 +45,36 @@ public class ClientApp {
 					MessageRequest m = new MessageRequest();
 					m.fill("write",key,value);
 					getContext().actorSelection(remotePath).tell(m,getSelf());
-					write = Boolean.FALSE;
 				}
 			}
 		}
 		//when the Client receive a message control the message type and operate
 		public void onReceive(Object message) {
+
 			//if is a Response it stamp the response received
 			if (message instanceof Response) {
-				((Response)message).stamp_responce();
+				Response r = ((Response)message);
+				if(leave){
+					leave = Boolean.FALSE;
+					if(r.getLeave()){
+						System.out.println("Leave done");
+					}
+					else System.out.println("Leave not done");
+				}
+				if(write){
+					write = Boolean.FALSE;
+					if(r.getWrite()){
+						System.out.println("Write done");
+					}
+					else System.out.println("Write not done");
+				}
+				if(read){
+					read = Boolean.FALSE;
+					if(r.getRead()){
+						r.stamp_value_version();
+					}
+					else System.out.println("Read not done");
+				}
 			}
 			else unhandled(message);
     }

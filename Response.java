@@ -37,16 +37,17 @@ public class Response implements Serializable {
     this.value = value;
     this.version = version;
   }
+  public Boolean getWrite(){
+    return write;
+  }
+  public Boolean getRead(){
+    return read;
+  }
+  public Boolean getLeave(){
+    return leave;
+  }
 
-  public void stamp_responce(){
-    if (write) {
-      System.out.println("Write done");
-    }
-    if (read) {
-      System.out.println("Value = " +value+" Version = "+version);
-    }
-    if (leave) {
-      System.out.println("Leave done");
-    }
+  public void stamp_value_version(){
+    System.out.println("Value = " +value+" Version = "+version);
   }
 }

@@ -1,3 +1,1 @@
-28 lo 0
-6 lo 0
-23 lo 0
+6 ciaocinque 2

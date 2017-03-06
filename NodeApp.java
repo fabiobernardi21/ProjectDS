@@ -228,6 +228,11 @@ public class NodeApp {
 						client.tell(response,getSelf());
 						write_answer.clear();
 					}
+					else{
+						Response response = new Response();
+						response.fill(Boolean.FALSE,Boolean.FALSE,Boolean.FALSE,null,0);
+						client.tell(response,getSelf());
+					}
 				}
 			}, getContext().system().dispatcher());
 		}
@@ -300,6 +305,10 @@ public class NodeApp {
 						response.fill(Boolean.FALSE,Boolean.TRUE,Boolean.FALSE,value,version);
 						client.tell(response,getSelf());
 						read_answer.clear();
+					}else{
+						Response response = new Response();
+						response.fill(Boolean.FALSE,Boolean.FALSE,Boolean.FALSE,null,0);
+						client.tell(response,getSelf());
 					}
 				}
 			}, getContext().system().dispatcher());
@@ -470,6 +479,9 @@ public class NodeApp {
 					data.clear();
 					nodes.clear();
 					delete_file();
+					Response response = new Response();
+					response.fill(Boolean.FALSE,Boolean.FALSE,Boolean.TRUE,null,0);
+					client.tell(response,getSelf());
 					try{
 						TimeUnit.MILLISECONDS.sleep(2000);
 					} catch (InterruptedException ie) {
@@ -541,6 +553,7 @@ public class NodeApp {
 				nodes.putAll(((NodelistRecovery)message).nodes);
 				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
 				Collections.sort(id_node_list);
+				
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 				//check if my data is correct
 				for(int j = 0; j<list_key_data.size(); j++){
@@ -558,11 +571,14 @@ public class NodeApp {
 					}
 				}
 				//find next and previous nodes from me
-				int previous = id_node_list.indexOf(myId)-1;
-				int next = id_node_list.indexOf(myId)+1;
+				//int previous = id_node_list.indexOf(myId)-1;
+				//int next = id_node_list.indexOf(myId)+1;
 				//send a RequestDataRecovery to next and prevoius
-				nodes.get(id_node_list.get(next)).tell(new RequestDataRecovery(myId),getSelf());
-				nodes.get(id_node_list.get(previous)).tell(new RequestDataRecovery(myId),getSelf());
+
+				for (int j = 0; j < id_node_list.size(); j++){
+					nodes.get(id_node_list.get(j)).tell(new RequestDataRecovery(myId),getSelf());
+				}
+
 			}
 			else if (message instanceof RequestDataRecovery){
 				RequestDataRecovery rdr = ((RequestDataRecovery)message);
