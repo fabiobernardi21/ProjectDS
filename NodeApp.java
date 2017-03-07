@@ -202,19 +202,18 @@ public class NodeApp {
 		//time to wait answer by nodes
 		private int timeout = 1000;
 
+		public int max_wr(){
+			if(r > w) return r;
+			else if(r < w) return w;
+			else return w;
+		}
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
-			if(r > w){
-				return read_answer.size() >= r;
-			}
-			else return read_answer.size() >= w;
+			return read_answer.size() >= max_wr();
 		}
 		//method that return true if there are enough write answers
 		public Boolean enough_write(){
-			if(r > w){
-				return read_answer.size() >= r;
-			}
-			else return read_answer.size() >= w;
+			return write_answer.size() >= max_wr();
 		}
 		//method used to make a write on a server in the system sending an ackrequest packet
 		public void save_value(MessageRequest m){
@@ -442,7 +441,7 @@ public class NodeApp {
 						}
 					}
 				}
-				//sono in possesso dell'id del server che dopo quello che ha fatto join
+				//sono in possesso dell'id del server dopo quello che ha fatto join
 				if (list_key_nodes.get(after) == myId) {
 					Map <Integer,Data> database = new HashMap<>();
 					for(int j = 0; j < list_key_data.size(); j++){
@@ -549,6 +548,22 @@ public class NodeApp {
 			else if (message instanceof NodeDataBase) {
 				NodeDataBase nd = ((NodeDataBase)message);
 				data.putAll(nd.database);
+				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
+				Collections.sort(list_key_data);
+				Boolean finded = Boolean.FALSE;
+				for(int j = 0; j<list_key_data.size(); j++){
+					serverid = find_server(list_key_data.get(j));
+					for (int i = 0;i<serverid.size();i++) {
+						if(serverid.get(i) == myId){
+							finded = Boolean.TRUE;
+							break;
+						}
+						finded = Boolean.FALSE;
+					}
+					if (finded == Boolean.FALSE) {
+						data.remove(list_key_data.get(j));
+					}
+				}
 				write_file();
 			}
 			else if (message instanceof NodeData) {
@@ -588,16 +603,13 @@ public class NodeApp {
 						write_file();
 					}
 				}
-				//find next and previous nodes from me
-				//int previous = id_node_list.indexOf(myId)-1;
-				//int next = id_node_list.indexOf(myId)+1;
-				//send a RequestDataRecovery to next and prevoius
-
+				/*
 				for (int j = 0; j < id_node_list.size(); j++){
 					nodes.get(id_node_list.get(j)).tell(new RequestDataRecovery(myId),getSelf());
 				}
-
+				*/
 			}
+			/*
 			else if (message instanceof RequestDataRecovery){
 				RequestDataRecovery rdr = ((RequestDataRecovery)message);
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
@@ -625,6 +637,7 @@ public class NodeApp {
 					}
 				}
 			}
+			*/
 			else if (message instanceof ImRecovered){
 				ImRecovered ir = ((ImRecovered)message);
 				nodes.put(ir.getId(),getSender());
