@@ -29,6 +29,15 @@ public class NodeApp {
 	static private int myId; // ID of the local node
 	static private int n = 3, w = 2, r = 2;
 
+	public static class ImRecovered implements Serializable{
+		private int id;
+		public ImRecovered(int id){
+			this.id = id;
+		}
+		public int getId(){
+			return id;
+		}
+	}
 	public static class RequestDataRecovery implements Serializable{
 		private int senderid;
 		public RequestDataRecovery(int senderid){
@@ -217,7 +226,6 @@ public class NodeApp {
 				public void run() {
 					if (enough_write()) {
 						//System.out.println("COORDINATOR:I have enough ack to write on N nodes");
-						//System.out.println("COORDINATOR:Send to nodes a write DataMessage");
 						for(int j = 0; j < serverid.size(); j++){
 							nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
 						}
@@ -265,10 +273,12 @@ public class NodeApp {
 		public int find_version(int key){
 			List<Integer> list = new ArrayList<Integer>(data.keySet());
 			//System.out.println("Find the last version available");
-			for(int i = 0; i < list.size(); i++){
-				if(list.get(i) == key){
-					Data d = data.get(key);
-					return d.getVersion()+1;
+			if (list.size() != 0) {
+				for(int i = 0; i < list.size(); i++){
+					if(list.get(i) == key){
+						Data d = data.get(key);
+						return d.getVersion()+1;
+					}
 				}
 			}
 			return 0;
@@ -377,8 +387,6 @@ public class NodeApp {
 					join = Boolean.FALSE;
 				}
 				else if (recover == Boolean.TRUE){
-					nodes.clear();
-					data.clear();
 					upload_file();
 					getContext().actorSelection(remotePath).tell(new RequestNodelistRecovery(), getSelf());
 					recover = Boolean.FALSE;
@@ -501,9 +509,11 @@ public class NodeApp {
 				//if is a read send back a DataResponseMessage with the value
 				if (m.isRead()){
 					//System.out.println("NODE:Coordinator read request received");
-					Data d = data.get(m.getKey());
+					if(data.containsKey(m.getKey())){
+						Data d = data.get(m.getKey());
+						getSender().tell(new DataResponseMessage(d),getSelf());
+					}
 					//System.out.println("NODE:DataResponseMessage sent back to coordinator");
-					getSender().tell(new DataResponseMessage(d),getSelf());
 				}
 				//if is a write make the write
 				if(m.isWrite()){
@@ -553,7 +563,9 @@ public class NodeApp {
 				nodes.putAll(((NodelistRecovery)message).nodes);
 				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
 				Collections.sort(id_node_list);
-				
+				for(int j = 0; j < id_node_list.size(); j++){
+					nodes.get(id_node_list.get(j)).tell(new ImRecovered(myId), getSelf());
+				}
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 				//check if my data is correct
 				for(int j = 0; j<list_key_data.size(); j++){
@@ -606,6 +618,10 @@ public class NodeApp {
 						write_file();
 					}
 				}
+			}
+			else if (message instanceof ImRecovered){
+				ImRecovered ir = ((ImRecovered)message);
+				nodes.put(ir.getId(),getSender());
 			}
 			else unhandled(message);		// this actor does not handle any incoming messages
     }
