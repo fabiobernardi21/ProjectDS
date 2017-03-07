@@ -218,18 +218,22 @@ public class NodeApp {
 		//method used to make a write on a server in the system sending an ackrequest packet
 		public void save_value(MessageRequest m){
 			write_message = m;
+			//finds the servers that are responsable from the new data
 			serverid = find_server(m.getKey());
 			//System.out.println("COORDINATOR:Send ACK requests to N nodes");
+			//sends an AckRequest message to the nodes that are responsable for that data
 			for(int j = 0; j < serverid.size(); j++){
 				if(serverid.get(j) == myId){
 					nodes.get(serverid.get(j)).tell(new Ack(),getSelf());
 				}
 				else nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
 			}
+			//schedules the Runnable operation after a timeout
 			getContext().system().scheduler().scheduleOnce(Duration.create(timeout, TimeUnit.MILLISECONDS),
 			new Runnable() {
 				public void run() {
 					if (enough_write()) {
+						//if w is enough sends a DataMessage to the responsable nodes and sends the Response back to the client
 						//System.out.println("COORDINATOR:I have enough ack to write on N nodes");
 						for(int j = 0; j < serverid.size(); j++){
 							nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
@@ -290,6 +294,7 @@ public class NodeApp {
 		}
 		//method that send a DataMessage to a specific server to read a value connected to a key
 		public void read_value(int key){
+			//finds the servers that have the data and sends to them a DataMessage of type read and if it is itself responsable sends itself a DataResponseMessage
 		 	serverid = find_server(key);
 			//System.out.println("COORDINATOR:Send a data read request to N nodes");
 			for(int j = 0; j < serverid.size(); j++){
@@ -303,6 +308,7 @@ public class NodeApp {
 			new Runnable() {
 				public void run() {
 					if (enough_read()) {
+						//if it has enough DataResponseMessage controls the maximum between the version and send back the linked data in the Response to the client
 						//System.out.println("COORDINATOR:I have enough respose to read on N nodes");
 						int max_version = 0;
 						int index = 0;
@@ -385,7 +391,7 @@ public class NodeApp {
 				if (join == Boolean.TRUE) {
 					nodes.clear();
 					data.clear();
-					delete_file();
+					delete_file();//clean the old Storage.txt
 					write_file();
 					//System.out.println("Send a nodelist request to bootstramping node");
 					getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
@@ -398,6 +404,7 @@ public class NodeApp {
 				}
 			}
 			else {
+				//bootstramping node case
 				nodes.clear();
 				data.clear();
 				delete_file();
@@ -420,7 +427,7 @@ public class NodeApp {
 					n.tell(new Join(myId), getSelf());
 				}
 			}
-			//if is a Join the server put sender on map because it is joined
+			//if it is Join the servers perform the joining
 			else if (message instanceof Join) {
 				int id = ((Join)message).getId();
 				System.out.println("Node " +id+ " joined");
@@ -429,6 +436,7 @@ public class NodeApp {
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 				Collections.sort(list_key_data);
 				Collections.sort(list_key_nodes);
+				//find the next node to the one that is joining
 				int after = 0;
 				if(list_key_nodes.get(list_key_nodes.size()-1) < id){
 					after = 0;
@@ -441,7 +449,7 @@ public class NodeApp {
 						}
 					}
 				}
-				//sono in possesso dell'id del server dopo quello che ha fatto join
+				//the next server sends to the joining node its list of data
 				if (list_key_nodes.get(after) == myId) {
 					Map <Integer,Data> database = new HashMap<>();
 					for(int j = 0; j < list_key_data.size(); j++){
@@ -450,6 +458,7 @@ public class NodeApp {
 					}
 					getSender().tell(new NodeDataBase(database),getSelf());
 				}
+				//all the nodes remove the data that became unusefull after the new node joined
 				Boolean finded = Boolean.FALSE;
 				for(int j = 0; j<list_key_data.size(); j++){
 					serverid = find_server(list_key_data.get(j));
@@ -477,10 +486,11 @@ public class NodeApp {
 				//if is leave call leave function
 				if(((MessageRequest)message).isLeave()){
 					System.out.println("Client leave request received");
-					nodes.remove(myId);
+					nodes.remove(myId);//remove its id from its node list and sends to others nodes a message di tipo Leave
 					for (ActorRef n: nodes.values()) {
 						n.tell(new Leave(myId), getSelf());
 					}
+					//sends the data (NodeData) to the nodes that became responsable after its leaving
 					List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
 					for(int j = 0; j<list_key_data.size(); j++){
 						serverid = find_server(list_key_data.get(j));
@@ -492,6 +502,7 @@ public class NodeApp {
 					data.clear();
 					nodes.clear();
 					delete_file();
+					//after the cleaning the memory sends the response to the client
 					Response response = new Response();
 					response.fill(Boolean.FALSE,Boolean.FALSE,Boolean.TRUE,null,0);
 					client.tell(response,getSelf());
@@ -513,6 +524,7 @@ public class NodeApp {
 				DataMessage m = ((DataMessage)message);
 				//if is a read send back a DataResponseMessage with the value
 				if (m.isRead()){
+					//if it is read sends DataResponseMessage if it has the data
 					//System.out.println("NODE:Coordinator read request received");
 					if(data.containsKey(m.getKey())){
 						Data d = data.get(m.getKey());
@@ -522,6 +534,7 @@ public class NodeApp {
 				}
 				//if is a write make the write
 				if(m.isWrite()){
+					//if it is a write find the latest version and write the DataMessage
 					//System.out.println("NODE:Coordinator write request received");
 					int version = find_version(m.getKey());
 					Data d = new Data(m.getValue(),version);
@@ -543,6 +556,7 @@ public class NodeApp {
 			}
 			//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
 			else if(message instanceof DataResponseMessage){
+				//the coordinator collects the DataResponseMessage
 				read_answer.add(((DataResponseMessage)message));
 			}
 			else if (message instanceof NodeDataBase) {
@@ -567,28 +581,32 @@ public class NodeApp {
 				write_file();
 			}
 			else if (message instanceof NodeData) {
-				//System.out.println("NODE:NodeData ricevuto");
+				//if the nodes receves a data (NodeData) that it hasn't, it inserts it in its database
 				if (data.containsKey(((NodeData)message).getKey()) == Boolean.FALSE){
 					data.put(((NodeData)message).getKey(),((NodeData)message).getData());
 					write_file();
 				}
 			}
 			else if (message instanceof Leave){
+				//the nodes that receives a message of type Leave remove the sender from their node list
 				nodes.remove(((Leave)message).getId());
 			}
 			else if (message instanceof RequestNodelistRecovery){
+				//bootstramping node send back the NodelistRecovery to the recovering node
 				getSender().tell(new NodelistRecovery(nodes),getSelf());
 			}
 			else if (message instanceof NodelistRecovery){
+				//the recovering node copy the NodelistRecovery that the bootstramping node send to it
 				Boolean finded = Boolean.FALSE;
 				nodes.putAll(((NodelistRecovery)message).nodes);
 				List<Integer> id_node_list = new ArrayList<Integer>(nodes.keySet());
 				Collections.sort(id_node_list);
+				//the recovering node send to other nodes a message ImRecovered to update his ActorRef in the map of the others
 				for(int j = 0; j < id_node_list.size(); j++){
 					nodes.get(id_node_list.get(j)).tell(new ImRecovered(myId), getSelf());
 				}
 				List<Integer> list_key_data = new ArrayList<Integer>(data.keySet());
-				//check if my data is correct
+				//check if its data are corrected or it has to delete some unusefull data
 				for(int j = 0; j<list_key_data.size(); j++){
 					serverid = find_server(list_key_data.get(j));
 					for (int i = 0;i<serverid.size();i++) {
@@ -604,6 +622,7 @@ public class NodeApp {
 					}
 				}
 				/*
+				//this part is to  update on its memory all the new data that are written while it is crashed
 				for (int j = 0; j < id_node_list.size(); j++){
 					nodes.get(id_node_list.get(j)).tell(new RequestDataRecovery(myId),getSelf());
 				}
@@ -639,6 +658,7 @@ public class NodeApp {
 			}
 			*/
 			else if (message instanceof ImRecovered){
+				//used to update the ActorRef
 				ImRecovered ir = ((ImRecovered)message);
 				nodes.put(ir.getId(),getSender());
 			}
