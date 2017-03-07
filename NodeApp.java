@@ -204,11 +204,17 @@ public class NodeApp {
 
   	//method that return true if there are enough write answers
 		public Boolean enough_read(){
-			return read_answer.size() >= r;
+			if(r > w){
+				return read_answer.size() >= r;
+			}
+			else return read_answer.size() >= w;
 		}
 		//method that return true if there are enough write answers
 		public Boolean enough_write(){
-			return write_answer.size() >= w;
+			if(r > w){
+				return read_answer.size() >= r;
+			}
+			else return read_answer.size() >= w;
 		}
 		//method used to make a write on a server in the system sending an ackrequest packet
 		public void save_value(MessageRequest m){
