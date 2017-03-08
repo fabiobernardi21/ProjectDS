@@ -139,11 +139,13 @@ public class NodeApp {
 		private String value;
 		private Boolean read;
 		private Boolean write;
-		public DataMessage(int key, String value , Boolean read, Boolean write){
+		private int version;
+		public DataMessage(int key, String value ,int version, Boolean read, Boolean write){
 			this.key = key;
 			this.value = value;
 			this.read = read;
 			this.write = write;
+			this.version = version;
 		}
 		public Boolean isRead(){
 			if(read){
@@ -163,11 +165,30 @@ public class NodeApp {
 		public int getKey(){
 			return key;
 		}
+		public int getVersion(){
+			return version;
+		}
 	}
 	//Ack -> ack sent by the server to the coodinator when the server is ready for write
-	public static class Ack implements Serializable{}
+	public static class Ack implements Serializable{
+		int version;
+		public Ack(int version){
+			this.version = version;
+		}
+		public int getVersion(){
+			return version;
+		}
+	}
 	//AckRequest -> ack sent by the coodrinator to n servers
-	public static class AckRequest implements Serializable{}
+	public static class AckRequest implements Serializable{
+		int key;
+		public AckRequest(int key){
+			this.key = key;
+		}
+		public int getKey(){
+			return key;
+		}
+	}
 	//RequestNodelist -> packet to request the nodelist to the bootstramping node
   public static class RequestNodelist implements Serializable {}
 	//Nodelist -> packet to sent the nodelist to the server joined
@@ -220,13 +241,17 @@ public class NodeApp {
 			write_message = m;
 			//finds the servers that are responsable from the new data
 			serverid = find_server(m.getKey());
-			//System.out.println("COORDINATOR:Send ACK requests to N nodes");
 			//sends an AckRequest message to the nodes that are responsable for that data
+			int version;
 			for(int j = 0; j < serverid.size(); j++){
 				if(serverid.get(j) == myId){
-					nodes.get(serverid.get(j)).tell(new Ack(),getSelf());
+					if(!data.containsKey(m.getKey())){
+						version = 0;
+					}
+					else version = data.get(m.getKey()).getVersion();
+					nodes.get(serverid.get(j)).tell(new Ack(version),getSelf());
 				}
-				else nodes.get(serverid.get(j)).tell(new AckRequest(),getSelf());
+				else nodes.get(serverid.get(j)).tell(new AckRequest(m.getKey()),getSelf());
 			}
 			//schedules the Runnable operation after a timeout
 			getContext().system().scheduler().scheduleOnce(Duration.create(timeout, TimeUnit.MILLISECONDS),
@@ -234,12 +259,16 @@ public class NodeApp {
 				public void run() {
 					if (enough_write()) {
 						//if w is enough sends a DataMessage to the responsable nodes and sends the Response back to the client
-						//System.out.println("COORDINATOR:I have enough ack to write on N nodes");
+						int version = 0;
+						for(int j = 0; j < write_answer.size(); j++){
+							if(write_answer.get(j).getVersion() > version){
+								version = write_answer.get(j).getVersion();
+							}
+						}
 						for(int j = 0; j < serverid.size(); j++){
-							nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),Boolean.FALSE,Boolean.TRUE),getSelf());
+							nodes.get(serverid.get(j)).tell(new DataMessage(write_message.getKey(),write_message.getValue(),version+1,Boolean.FALSE,Boolean.TRUE),getSelf());
 						}
 						serverid.clear();
-						//System.out.println("COORDINATOR:Send back to client the response");
 						Response response = new Response();
 						response.fill(Boolean.TRUE,Boolean.FALSE,Boolean.FALSE,null,0);
 						client.tell(response,getSelf());
@@ -275,13 +304,11 @@ public class NodeApp {
 				start=(start+1)%list.size();
 				q++;
 			}
-			//System.out.println("Find servers "+ids+" where data is replicated");
 			return ids;
 		}
 		//method to find the right version of value
 		public int find_version(int key){
 			List<Integer> list = new ArrayList<Integer>(data.keySet());
-			//System.out.println("Find the last version available");
 			if (list.size() != 0) {
 				for(int i = 0; i < list.size(); i++){
 					if(list.get(i) == key){
@@ -296,30 +323,26 @@ public class NodeApp {
 		public void read_value(int key){
 			//finds the servers that have the data and sends to them a DataMessage of type read and if it is itself responsable sends itself a DataResponseMessage
 		 	serverid = find_server(key);
-			//System.out.println("COORDINATOR:Send a data read request to N nodes");
 			for(int j = 0; j < serverid.size(); j++){
 				if(serverid.get(j) == myId){
 					Data d = data.get(key);
 					nodes.get(serverid.get(j)).tell(new DataResponseMessage(d),getSelf());
 				}
-				else nodes.get(serverid.get(j)).tell(new DataMessage(key,null,Boolean.TRUE,Boolean.FALSE),getSelf());
+				else nodes.get(serverid.get(j)).tell(new DataMessage(key,null,0,Boolean.TRUE,Boolean.FALSE),getSelf());
 			}
 			getContext().system().scheduler().scheduleOnce(Duration.create(timeout, TimeUnit.MILLISECONDS),
 			new Runnable() {
 				public void run() {
 					if (enough_read()) {
 						//if it has enough DataResponseMessage controls the maximum between the version and send back the linked data in the Response to the client
-						//System.out.println("COORDINATOR:I have enough respose to read on N nodes");
 						int max_version = 0;
 						int index = 0;
-						//System.out.println("COORDINATOR:Choose the data with latest version");
 						for (int i = 0; i < read_answer.size(); i++ ) {
 							if (max_version < read_answer.get(i).getData().getVersion()) {
 								max_version = read_answer.get(i).getData().getVersion();
 								index = i;
 							}
 						}
-						//System.out.println("COORDINATOR:Send back to client the response");
 						Response response = new Response();
 						String value = read_answer.get(index).getData().getValue();
 						int version = max_version;
@@ -393,7 +416,6 @@ public class NodeApp {
 					data.clear();
 					delete_file();//clean the old Storage.txt
 					write_file();
-					//System.out.println("Send a nodelist request to bootstramping node");
 					getContext().actorSelection(remotePath).tell(new RequestNodelist(), getSelf());
 					join = Boolean.FALSE;
 				}
@@ -416,12 +438,10 @@ public class NodeApp {
     public void onReceive(Object message) {
 			//if is a RequestNodelist the server send back the Nodelist
 			if (message instanceof RequestNodelist) {
-				//System.out.println("RequestNodelist packet rx -> send back Nodelist");
 				getSender().tell(new Nodelist(nodes), getSelf());
 			}
 			//if is a Nodelist the server put the list of nodes in its local map and send a Join message
 			else if (message instanceof Nodelist) {
-				//System.out.println("Nodelist packet rx -> send to all nodes a Join");
 				nodes.putAll(((Nodelist)message).nodes);
 				for (ActorRef n: nodes.values()) {
 					n.tell(new Join(myId), getSelf());
@@ -498,7 +518,6 @@ public class NodeApp {
 							nodes.get(serverid.get(i)).tell(new NodeData(data.get(list_key_data.get(j)),list_key_data.get(j)),getSelf());
 						}
 					}
-					//System.out.println("NODE:data sent to other nodes for right replication");
 					data.clear();
 					nodes.clear();
 					delete_file();
@@ -525,19 +544,15 @@ public class NodeApp {
 				//if is a read send back a DataResponseMessage with the value
 				if (m.isRead()){
 					//if it is read sends DataResponseMessage if it has the data
-					//System.out.println("NODE:Coordinator read request received");
 					if(data.containsKey(m.getKey())){
 						Data d = data.get(m.getKey());
 						getSender().tell(new DataResponseMessage(d),getSelf());
 					}
-					//System.out.println("NODE:DataResponseMessage sent back to coordinator");
 				}
 				//if is a write make the write
 				if(m.isWrite()){
 					//if it is a write find the latest version and write the DataMessage
-					//System.out.println("NODE:Coordinator write request received");
-					int version = find_version(m.getKey());
-					Data d = new Data(m.getValue(),version);
+					Data d = new Data(m.getValue(),m.getVersion());
 					System.out.println("Write done");
 					data.put(m.getKey(),d);
 					write_file();
@@ -545,13 +560,16 @@ public class NodeApp {
 			}
 			//if is a AckRequest sent by coordinator, send back an Ack
 			else if (message instanceof AckRequest){
-				//System.out.println("NODE:Write AckRequest received from coordinator");
-				//System.out.println("NODE:Ack sent back to coordinator");
-				getSender().tell(new Ack(),getSelf());
+				AckRequest ar = ((AckRequest)message);
+				int version;
+				if(!data.containsKey(ar.getKey())){
+					version = 0;
+				}
+				else version = data.get(ar.getKey()).getVersion();
+				getSender().tell(new Ack(version),getSelf());
 			}
 			//if is an Ack from server, wait W Ack messages and after send them the write and send back response to client
 			else if(message instanceof Ack){
-				//System.out.println("COORDINATOR:Ack received from node");
 				write_answer.add(((Ack)message));
 			}
 			//if is a DataResponseMessage from server wait R DataResponseMessage and after send to client the last version
@@ -581,9 +599,10 @@ public class NodeApp {
 				write_file();
 			}
 			else if (message instanceof NodeData) {
+				NodeData nd = ((NodeData)message);
 				//if the nodes receves a data (NodeData) that it hasn't, it inserts it in its database
-				if (data.containsKey(((NodeData)message).getKey()) == Boolean.FALSE){
-					data.put(((NodeData)message).getKey(),((NodeData)message).getData());
+				if (data.containsKey(nd.getKey()) == Boolean.FALSE){
+					data.put(nd.getKey(),nd.getData());
 					write_file();
 				}
 			}
@@ -681,7 +700,6 @@ public class NodeApp {
 			if(args[0].equals("join")){
 				join = Boolean.TRUE;
 				remotePath = "akka.tcp://mysystem@"+ip+":"+port+"/user/node";
-				//System.out.println("Starting node " + myId + "; bootstrapping node: " + ip + ":"+ port);
 			}
 			else if(args[0].equals("recover")){
 				recover = Boolean.TRUE;
