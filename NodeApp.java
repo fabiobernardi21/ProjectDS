@@ -709,7 +709,6 @@ public class NodeApp {
 			  System.out.println("Argument error for node application");
 			}
 		}
-
 		if (args.length != 0 && args.length != 3) {
 			System.out.println("Wrong number of arguments: [action, ip, port]");
 			return;
